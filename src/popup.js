@@ -23,19 +23,18 @@ async function init() {
 }
 
 function showStats(progressData, timestamp) {
-  const firstCat = Object.keys(progressData)[0];
-  const labels = progressData[firstCat];
-  let totalHours = 0, watchedHours = 0, totalCount = 0, watchedCount = 0;
-
-  for (const stats of Object.values(labels)) {
+  const userStats = progressData._userStats;
+  const levelLabels = progressData.level || {};
+  let totalHours = 0, watchedHours = 0;
+  for (const stats of Object.values(levelLabels)) {
     totalHours += stats.total;
     watchedHours += stats.watched;
-    totalCount += stats.count;
-    watchedCount += stats.watchedCount;
   }
 
+  const totalCount = userStats?.totalVideos || 0;
+  const watchedCount = userStats?.watchedVideos || 0;
   const percent = totalHours > 0 ? Math.round((watchedHours / totalHours) * 100) : 0;
-  const categories = Object.keys(progressData).length;
+  const categories = Object.keys(progressData).filter(k => k !== '_userStats').length;
   const age = timestamp ? timeSince(timestamp) : 'unknown';
 
   contentEl.innerHTML = `

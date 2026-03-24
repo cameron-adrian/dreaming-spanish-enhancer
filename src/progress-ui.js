@@ -8,7 +8,7 @@ const ProgressUI = {
     const panel = document.createElement('div');
     panel.className = 'ds-panel';
 
-    const categories = Object.keys(progressData);
+    const categories = Object.keys(progressData).filter(k => k !== '_userStats');
     if (categories.length === 0) {
       panel.innerHTML = `
         <div class="ds-panel-header">
@@ -113,20 +113,35 @@ const ProgressUI = {
   },
 
   computeOverallStats(progressData) {
-    // Use the first category to avoid double-counting
+    const userStats = progressData._userStats;
+    if (userStats) {
+      // Use level category for total hours (no double-counting since each video has one level)
+      const levelLabels = progressData.level || {};
+      let totalHours = 0, watchedHours = 0;
+      for (const stats of Object.values(levelLabels)) {
+        totalHours += stats.total;
+        watchedHours += stats.watched;
+      }
+      const percent = totalHours > 0 ? Math.round((watchedHours / totalHours) * 100) : 0;
+      return {
+        totalHours,
+        watchedHours,
+        totalCount: userStats.totalVideos,
+        watchedCount: userStats.watchedVideos,
+        percent
+      };
+    }
+
+    // Fallback: use first category
     const firstCat = Object.keys(progressData)[0];
     const labels = progressData[firstCat];
     let totalHours = 0, watchedHours = 0, totalCount = 0, watchedCount = 0;
-
-    // Since videos can appear in multiple labels, we approximate
-    // by summing and noting it's per-category
     for (const stats of Object.values(labels)) {
       totalHours += stats.total;
       watchedHours += stats.watched;
       totalCount += stats.count;
       watchedCount += stats.watchedCount;
     }
-
     const percent = totalHours > 0 ? Math.round((watchedHours / totalHours) * 100) : 0;
     return { totalHours, watchedHours, totalCount, watchedCount, percent };
   },

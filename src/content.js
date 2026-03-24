@@ -12,33 +12,22 @@
   let isLoading = false;
 
   async function init() {
-    console.log('[DS Enhancer] Content script initializing...');
-    console.log('[DS Enhancer] Page URL:', location.href);
-
     // Wait for the page to settle
     await sleep(1500);
 
     const token = DSApi.getToken();
-    if (!token) {
-      console.warn('[DS Enhancer] No auth token found — user not logged in.');
-      console.warn('[DS Enhancer] The extension will activate once you log in to Dreaming Spanish.');
-      return;
-    }
-    console.log('[DS Enhancer] Auth token found. Checking cache...');
+    if (!token) return;
 
     // Check if we have cached data
     try {
       const cached = await sendMessage({ type: 'GET_PROGRESS' });
-      console.log('[DS Enhancer] Cache check result:', cached);
       if (cached.ok && cached.data) {
-        console.log('[DS Enhancer] Using cached data. Categories:', Object.keys(cached.data));
         progressData = cached.data;
         injectToggleButton();
         return;
       }
-      console.log('[DS Enhancer] Cache miss or stale, fetching fresh data...');
     } catch (e) {
-      console.log('[DS Enhancer] Cache check failed:', e.message, '— fetching fresh data...');
+      // Cache unavailable, fetch fresh
     }
 
     await fetchAndRender();
@@ -53,21 +42,7 @@
 
     try {
       updateToggleButton('loading');
-      console.log('[DS Enhancer] Fetching progress data from API...');
-      const startTime = performance.now();
       progressData = await DSApi.computeProgress();
-      const elapsed = Math.round(performance.now() - startTime);
-
-      console.log(`[DS Enhancer] Progress data loaded in ${elapsed}ms`);
-      console.log('[DS Enhancer] Categories found:', Object.keys(progressData));
-      for (const [cat, labels] of Object.entries(progressData)) {
-        console.log(`[DS Enhancer]   ${cat}: ${Object.keys(labels).length} labels`);
-      }
-
-      if (Object.keys(progressData).length === 0) {
-        console.warn('[DS Enhancer] WARNING: Progress data is empty! The API responded but no categories were extracted.');
-        console.warn('[DS Enhancer] Check the "SAMPLE VIDEO OBJECTS" logs above to debug field mapping.');
-      }
 
       // Cache it via background script
       sendMessage({
