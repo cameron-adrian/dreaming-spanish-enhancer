@@ -18,10 +18,10 @@ const ProgressUI = {
 
   /** Level colors matching Dreaming Spanish badges */
   levelColors: {
-    'Superbeginner': '#28a745',
-    'Beginner': '#6354b1',
-    'Intermediate': '#e83e8c',
-    'Advanced': '#fd7e14',
+    'Superbeginner': '#0ed4d4',
+    'Beginner': '#239fe3',
+    'Intermediate': '#ff7f3c',
+    'Advanced': '#ff2e65',
   },
 
   createPanel(progressData) {
@@ -53,10 +53,11 @@ const ProgressUI = {
 
     const sectionsHtml = categories.map((cat, i) => {
       const summary = this.computeCategorySummary(progressData[cat]);
+      const remaining = summary.totalLabels - summary.completedLabels;
       return `<div class="ds-tab-content ${i === 0 ? 'ds-tab-content-active' : ''}" data-category="${cat}">
         <div class="ds-category-summary">
           <span class="ds-category-summary-text">
-            <span>${summary.completedLabels}</span> of ${summary.totalLabels} ${this.formatCategoryName(cat).toLowerCase()} completed
+            <span>${summary.completedLabels}</span> of ${summary.totalLabels} ${this.formatCategoryPlural(cat)} completed — ${summary.percent}% (${remaining} remaining)
           </span>
           <div class="ds-category-summary-bar">
             <div class="ds-category-summary-fill" style="width: ${summary.percent}%"></div>
@@ -109,7 +110,7 @@ const ProgressUI = {
         <input class="ds-search" type="text" placeholder="Filter..." />
         <label class="ds-hide-completed">
           <input type="checkbox" class="ds-hide-completed-cb" />
-          Hide 100%
+          Hide completed
         </label>
       </div>
       <div class="ds-panel-body">
@@ -256,19 +257,15 @@ const ProgressUI = {
     rows.sort(sortFn).forEach(row => activeContent.appendChild(row));
 
     // Update summary to reflect filter
-    const summary = activeContent.querySelector('.ds-category-summary');
-    if (summary && hideCompleted) {
-      const completedCount = rows.filter(r => r.classList.contains('ds-row-complete')).length;
-      const remaining = totalCount - completedCount;
-      summary.querySelector('.ds-category-summary-text').innerHTML =
-        `<span>${completedCount}</span> of ${totalCount} completed (${remaining} remaining)`;
-    } else if (summary) {
+    const summaryEl = activeContent.querySelector('.ds-category-summary');
+    if (summaryEl) {
       const cat = activeContent.dataset.category;
       const labels = progressData[cat];
       if (labels) {
         const s = this.computeCategorySummary(labels);
-        summary.querySelector('.ds-category-summary-text').innerHTML =
-          `<span>${s.completedLabels}</span> of ${s.totalLabels} ${this.formatCategoryName(cat).toLowerCase()} completed`;
+        const remaining = s.totalLabels - s.completedLabels;
+        summaryEl.querySelector('.ds-category-summary-text').innerHTML =
+          `<span>${s.completedLabels}</span> of ${s.totalLabels} ${this.formatCategoryPlural(cat)} completed — ${s.percent}% (${remaining} remaining)`;
       }
     }
   },
@@ -305,6 +302,13 @@ const ProgressUI = {
       .replace(/([A-Z])/g, ' $1')
       .replace(/^./, s => s.toUpperCase())
       .trim();
+  },
+
+  formatCategoryPlural(name) {
+    const singular = this.formatCategoryName(name).toLowerCase();
+    if (singular === 'series') return 'series';
+    if (singular.endsWith('s')) return singular;
+    return singular + 's';
   },
 
   escapeHtml(str) {

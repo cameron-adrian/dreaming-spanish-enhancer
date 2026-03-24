@@ -10,10 +10,10 @@
   --ds-error: #ff6275;
 
   /* Level colors */
-  --ds-level-superbeginner: #28a745;
-  --ds-level-beginner: #6354b1;
-  --ds-level-intermediate: #e83e8c;
-  --ds-level-advanced: #fd7e14;
+  --ds-level-superbeginner: #0ed4d4;
+  --ds-level-beginner: #239fe3;
+  --ds-level-intermediate: #ff7f3c;
+  --ds-level-advanced: #ff2e65;
 }
 
 /* Light mode (default) */
