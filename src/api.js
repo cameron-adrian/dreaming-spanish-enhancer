@@ -3,7 +3,10 @@
  * Handles authentication and data fetching from the DS API.
  */
 
-const DS_API = 'https://app.dreaming.com/.netlify/functions';
+// Auto-detect the correct domain based on where we're running
+const DS_API = (typeof location !== 'undefined' && location.hostname === 'app.dreamingspanish.com')
+  ? 'https://app.dreamingspanish.com/.netlify/functions'
+  : 'https://app.dreaming.com/.netlify/functions';
 
 const DSApi = {
   /**
