@@ -91,199 +91,116 @@ const DSApi = {
   },
 
   /**
-   * Fetch the full video catalog for a language.
-   * Returns an array of video objects with labels, duration, etc.
+   * Try fetching an endpoint, returning null on error instead of throwing.
    */
-  async getPlaylist(language = 'es') {
-    return this.fetch('playlist', { language });
+  async tryFetch(endpoint, params = {}) {
+    try {
+      return await this.fetch(endpoint, params);
+    } catch (e) {
+      console.log(`[DS Enhancer] Probe ${endpoint}: ${e.message}`);
+      return null;
+    }
   },
 
   /**
-   * Fetch the user's watched video history.
-   * Returns an array of watched video records.
+   * Discover the correct API endpoints by probing common names.
+   * Logs all results so we can figure out the real data structure.
    */
-  async getWatchedVideos(language = 'es') {
-    return this.fetch('watchedVideo', { language });
-  },
+  async discoverEndpoints(language = 'es') {
+    console.log('[DS Enhancer] ========== ENDPOINT DISCOVERY ==========');
 
-  /**
-   * Fetch user profile info.
-   */
-  async getUser() {
-    return this.fetch('user', { timezone: '0' });
-  },
-
-  /**
-   * Compute progress data: for each label category, calculate total hours
-   * and watched hours per label value.
-   *
-   * Returns: {
-   *   "Country": {
-   *     "Argentina": { total: 300, watched: 150, count: 500, watchedCount: 250 },
-   *     "Mexico": { ... },
-   *     ...
-   *   },
-   *   "Guide": { ... },
-   *   ...
-   * }
-   */
-  async computeProgress(language = 'es') {
-    console.log('[DS Enhancer] Computing progress for language:', language);
-
-    const [playlist, watchedVideos] = await Promise.all([
-      this.getPlaylist(language),
-      this.getWatchedVideos(language)
-    ]);
-
-    // Log raw response shapes for debugging
-    console.log('[DS Enhancer] ---- RAW PLAYLIST RESPONSE ----');
-    console.log('[DS Enhancer] playlist type:', typeof playlist, Array.isArray(playlist) ? `array[${playlist.length}]` : '');
-    if (!Array.isArray(playlist) && playlist) {
-      console.log('[DS Enhancer] playlist top-level keys:', Object.keys(playlist));
-      // Log nested arrays to find the video list
-      for (const [k, v] of Object.entries(playlist)) {
-        if (Array.isArray(v)) console.log(`[DS Enhancer]   playlist.${k}: array[${v.length}]`);
-        else console.log(`[DS Enhancer]   playlist.${k}:`, typeof v, typeof v === 'string' ? v.substring(0, 80) : '');
-      }
-    }
-
-    console.log('[DS Enhancer] ---- RAW WATCHED RESPONSE ----');
-    console.log('[DS Enhancer] watchedVideos type:', typeof watchedVideos, Array.isArray(watchedVideos) ? `array[${watchedVideos.length}]` : '');
-    if (!Array.isArray(watchedVideos) && watchedVideos) {
-      console.log('[DS Enhancer] watchedVideos top-level keys:', Object.keys(watchedVideos));
-    }
-
-    // Build a set of watched video IDs for quick lookup
-    const watchedSet = new Set();
-    if (Array.isArray(watchedVideos)) {
-      watchedVideos.forEach(v => {
-        if (v.watched !== false) {
-          watchedSet.add(v.videoId || v._id || v.id);
-        }
-      });
-    }
-    console.log('[DS Enhancer] Watched video IDs count:', watchedSet.size);
-    if (watchedSet.size > 0) {
-      const sample = [...watchedSet].slice(0, 3);
-      console.log('[DS Enhancer] Sample watched IDs:', sample);
-    }
-    if (Array.isArray(watchedVideos) && watchedVideos.length > 0) {
-      console.log('[DS Enhancer] ---- SAMPLE WATCHED VIDEO OBJECT ----');
-      console.log('[DS Enhancer]', JSON.stringify(watchedVideos[0], null, 2).substring(0, 1000));
-    }
-
-    // Known label category fields on DS video objects
-    const LABEL_FIELDS = [
-      'country', 'countries',
-      'guide', 'guides',
-      'topic', 'topics',
-      'dialect', 'dialects',
-      'difficulty', 'level',
-      'type', 'videoType',
-      'tags', 'labels',
-      'playlist', 'playlists',
-      'category', 'categories'
+    // Endpoints to try for video catalog
+    const catalogEndpoints = [
+      ['videos', { language }],
+      ['video', { language }],
+      ['content', { language }],
+      ['contents', { language }],
+      ['series', { language }],
+      ['catalog', { language }],
+      ['browse', { language }],
+      ['search', { language }],
+      ['feed', { language }],
+      ['lessons', { language }],
+      ['library', { language }],
+      ['allVideos', { language }],
+      ['getAllVideos', { language }],
+      ['getVideos', { language }],
+      ['videoList', { language }],
     ];
 
-    const progress = {};
-    const videos = Array.isArray(playlist) ? playlist : (playlist?.videos || playlist?.playlist || []);
+    // Endpoints to try for watch history
+    const historyEndpoints = [
+      ['watchedVideo', { language }],
+      ['watched', { language }],
+      ['history', { language }],
+      ['watchHistory', { language }],
+      ['progress', { language }],
+      ['userProgress', { language }],
+      ['stats', { language }],
+      ['user', { timezone: '0' }],
+    ];
 
-    if (videos.length === 0) {
-      console.warn('[DS Enhancer] No videos found in playlist response.');
-      console.warn('[DS Enhancer] Tried: Array.isArray(playlist), playlist.videos, playlist.playlist');
-      console.warn('[DS Enhancer] Available keys:', Object.keys(playlist || {}));
-      return progress;
-    }
+    // Also try playlist with no params
+    const playlistNoParams = await this.tryFetch('playlist');
+    console.log('[DS Enhancer] playlist (no params):', playlistNoParams ?
+      (Array.isArray(playlistNoParams) ? `array[${playlistNoParams.length}]` : `object{${Object.keys(playlistNoParams).join(', ')}}`) : 'FAILED');
 
-    console.log('[DS Enhancer] Total videos to process:', videos.length);
+    // Probe catalog endpoints in parallel
+    console.log('[DS Enhancer] ---- Probing catalog endpoints ----');
+    const catalogResults = await Promise.all(
+      catalogEndpoints.map(async ([name, params]) => {
+        const data = await this.tryFetch(name, params);
+        return [name, data];
+      })
+    );
 
-    // Log first 3 full video objects for schema inspection
-    const sampleVideo = videos[0];
-    console.log('[DS Enhancer] ---- SAMPLE VIDEO OBJECTS (first 3) ----');
-    videos.slice(0, 3).forEach((v, i) => {
-      console.log(`[DS Enhancer] Video ${i}:`, JSON.stringify(v, null, 2).substring(0, 1500));
-    });
-    console.log('[DS Enhancer] Sample video fields:', Object.keys(sampleVideo));
+    for (const [name, data] of catalogResults) {
+      if (!data) continue;
+      const shape = Array.isArray(data) ? `array[${data.length}]` : `object{${Object.keys(data).join(', ')}}`;
+      console.log(`[DS Enhancer] ✓ ${name}: ${shape}`);
 
-    // Log which label fields actually exist on the data
-    const foundFields = LABEL_FIELDS.filter(f => sampleVideo[f] !== undefined);
-    const missingFields = LABEL_FIELDS.filter(f => sampleVideo[f] === undefined);
-    console.log('[DS Enhancer] Label fields FOUND on videos:', foundFields);
-    console.log('[DS Enhancer] Label fields MISSING on videos:', missingFields);
-
-    // Log duration field detection
-    console.log('[DS Enhancer] Duration field check:', {
-      timeSeconds: sampleVideo.timeSeconds,
-      duration: sampleVideo.duration,
-      durationSeconds: sampleVideo.durationSeconds,
-    });
-
-    // Process each video
-    videos.forEach(video => {
-      const videoId = video._id || video.id || video.videoId;
-      const durationSec = video.timeSeconds || video.duration || video.durationSeconds || 0;
-      const durationHrs = durationSec / 3600;
-      const isWatched = watchedSet.has(videoId) || video.watched === true;
-
-      // Check all possible label fields
-      const processLabel = (categoryName, value) => {
-        if (!value) return;
-        const values = Array.isArray(value) ? value : [value];
-        values.forEach(v => {
-          const label = typeof v === 'object' ? (v.name || v.title || v.label || JSON.stringify(v)) : String(v);
-          if (!label || label === 'undefined' || label === 'null') return;
-
-          if (!progress[categoryName]) progress[categoryName] = {};
-          if (!progress[categoryName][label]) {
-            progress[categoryName][label] = { total: 0, watched: 0, count: 0, watchedCount: 0 };
-          }
-          progress[categoryName][label].total += durationHrs;
-          progress[categoryName][label].count += 1;
-          if (isWatched) {
-            progress[categoryName][label].watched += durationHrs;
-            progress[categoryName][label].watchedCount += 1;
-          }
-        });
-      };
-
-      // Process known fields
-      for (const field of LABEL_FIELDS) {
-        if (video[field] !== undefined && video[field] !== null) {
-          const categoryName = field.charAt(0).toUpperCase() + field.slice(1).replace(/s$/, '');
-          processLabel(categoryName, video[field]);
-        }
-      }
-
-      // Also process any array/string fields we haven't covered
-      for (const [key, val] of Object.entries(video)) {
-        if (LABEL_FIELDS.includes(key)) continue;
-        if (key.startsWith('_') || ['id', 'videoId', 'title', 'name', 'description',
-          'url', 'thumbnail', 'thumbnailUrl', 'image', 'slug',
-          'timeSeconds', 'duration', 'durationSeconds',
-          'createdAt', 'updatedAt', 'publishedAt', 'date',
-          'watched', 'lastWatched', 'views', 'likes',
-          'language', 'premium'].includes(key)) continue;
-
-        if (Array.isArray(val) && val.length > 0 && val.length < 50) {
-          const categoryName = key.charAt(0).toUpperCase() + key.slice(1).replace(/s$/, '');
-          processLabel(categoryName, val);
-        } else if (typeof val === 'string' && val.length < 100 && val.length > 0) {
-          // Could be a label - only include if it looks categorical (not a long description)
-          const categoryName = key.charAt(0).toUpperCase() + key.slice(1);
-          processLabel(categoryName, val);
-        }
-      }
-    });
-
-    // Round all numbers
-    for (const cat of Object.values(progress)) {
-      for (const label of Object.values(cat)) {
-        label.total = Math.round(label.total * 100) / 100;
-        label.watched = Math.round(label.watched * 100) / 100;
+      // If it's an array with objects that have video-like fields, log a sample
+      const items = Array.isArray(data) ? data : (data.videos || data.items || data.results || data.content || []);
+      if (items.length > 0) {
+        console.log(`[DS Enhancer]   Sample from ${name}:`, JSON.stringify(items[0], null, 2).substring(0, 1500));
+        console.log(`[DS Enhancer]   Fields:`, Object.keys(items[0]));
       }
     }
 
-    console.log('[DS Enhancer] Progress computed:', Object.keys(progress));
-    return progress;
+    // Probe history endpoints in parallel
+    console.log('[DS Enhancer] ---- Probing history/progress endpoints ----');
+    const historyResults = await Promise.all(
+      historyEndpoints.map(async ([name, params]) => {
+        const data = await this.tryFetch(name, params);
+        return [name, data];
+      })
+    );
+
+    for (const [name, data] of historyResults) {
+      if (!data) continue;
+      const shape = Array.isArray(data) ? `array[${data.length}]` : `object{${Object.keys(data).join(', ')}}`;
+      console.log(`[DS Enhancer] ✓ ${name}: ${shape}`);
+
+      const items = Array.isArray(data) ? data : [];
+      if (items.length > 0) {
+        console.log(`[DS Enhancer]   Sample from ${name}:`, JSON.stringify(items[0], null, 2).substring(0, 1500));
+        console.log(`[DS Enhancer]   Fields:`, Object.keys(items[0]));
+      } else if (!Array.isArray(data)) {
+        // It's an object — log it directly (user profile, etc.)
+        console.log(`[DS Enhancer]   ${name} data:`, JSON.stringify(data, null, 2).substring(0, 2000));
+      }
+    }
+
+    console.log('[DS Enhancer] ========== DISCOVERY COMPLETE ==========');
+    return { catalogResults, historyResults };
+  },
+
+  async computeProgress(language = 'es') {
+    // Run endpoint discovery to find the right data
+    await this.discoverEndpoints(language);
+
+    // For now, return empty — once we know the right endpoints, we'll build the real logic
+    console.log('[DS Enhancer] computeProgress: returning empty pending endpoint discovery results.');
+    return {};
   }
 };
