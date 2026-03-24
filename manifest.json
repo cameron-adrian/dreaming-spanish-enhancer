@@ -13,7 +13,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://app.dreaming.com/*"],
+      "matches": [
+        "https://app.dreaming.com/*",
+        "https://app.dreamingspanish.com/*"
+      ],
       "js": ["src/api.js", "src/progress-ui.js", "src/content.js"],
       "css": ["src/progress.css"],
       "run_at": "document_idle"
@@ -32,6 +35,7 @@
     "tabs"
   ],
   "host_permissions": [
-    "https://app.dreaming.com/*"
+    "https://app.dreaming.com/*",
+    "https://app.dreamingspanish.com/*"
   ]
 }
