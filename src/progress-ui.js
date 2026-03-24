@@ -201,13 +201,22 @@ const ProgressUI = {
   buildProgressRow(label, stats, category) {
     const percent = stats.total > 0 ? Math.round((stats.watched / stats.total) * 100) : 0;
     const isComplete = percent >= 100;
-    const barColor = this.getBarColor(percent, label, category);
+    const barColor = this.getBarColor(percent);
+
+    // Render level labels as colored badges matching DS site
+    let labelHtml;
+    if (category === 'level' && this.levelColors[label]) {
+      const color = this.levelColors[label];
+      labelHtml = `<span class="ds-level-badge" style="background: ${color}1a; color: ${color}; border: 1px solid ${color}40;">${this.escapeHtml(label)}</span>`;
+    } else {
+      labelHtml = `<span class="ds-row-label">${this.escapeHtml(label)}</span>`;
+    }
 
     return `
       <div class="ds-row ${isComplete ? 'ds-row-complete' : ''}" data-label="${this.escapeHtml(label)}" data-percent="${percent}"
            data-watched="${stats.watched}" data-total="${stats.total}" data-count="${stats.count}">
         <div class="ds-row-header">
-          <span class="ds-row-label">${this.escapeHtml(label)}</span>
+          ${labelHtml}
           <span class="ds-row-stats">
             ${stats.watched.toFixed(1)}h / ${stats.total.toFixed(1)}h
             <span class="ds-row-videos">(${stats.watchedCount}/${stats.count} videos)</span>
@@ -283,12 +292,7 @@ const ProgressUI = {
     }
   },
 
-  getBarColor(percent, label, category) {
-    // Use DS level colors for level category
-    if (category === 'level' && this.levelColors[label]) {
-      return this.levelColors[label];
-    }
-    // Default: orange gradient based on DS primary
+  getBarColor(percent) {
     if (percent >= 100) return '#28a745';
     if (percent >= 75) return '#ff9301';
     if (percent >= 50) return '#ffb347';

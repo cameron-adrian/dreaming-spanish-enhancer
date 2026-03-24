@@ -427,6 +427,15 @@
   font-size: 13px;
 }
 
+.ds-level-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 20px;
+  line-height: 1.4;
+}
+
 .ds-row-stats {
   font-size: 11px;
   color: var(--ds-text-secondary);
