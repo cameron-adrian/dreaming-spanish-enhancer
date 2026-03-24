@@ -63,7 +63,7 @@ function showStats(progressData, timestamp) {
       <div class="progress-bar-fill" style="width: ${percent}%"></div>
     </div>
     <div class="actions">
-      <button class="primary" id="open-panel">Open Full Panel</button>
+      <button class="primary" id="open-panel">View Progress Page</button>
       <button id="refresh">Refresh</button>
     </div>
   `;
@@ -71,11 +71,10 @@ function showStats(progressData, timestamp) {
   document.getElementById('open-panel').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.url && tab.url.includes('dreaming')) {
-      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_PANEL' });
+      chrome.tabs.sendMessage(tab.id, { type: 'OPEN_PROGRESS' });
       window.close();
     } else {
-      // Open DS in a new tab
-      chrome.tabs.create({ url: 'https://app.dreaming.com' });
+      chrome.tabs.create({ url: 'https://app.dreaming.com/spanish/progress' });
     }
   });
 
@@ -107,7 +106,7 @@ function showNoData() {
   `;
 
   document.getElementById('open-ds').addEventListener('click', () => {
-    chrome.tabs.create({ url: 'https://app.dreaming.com' });
+    chrome.tabs.create({ url: 'https://app.dreaming.com/spanish/progress' });
   });
 }
 

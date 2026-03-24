@@ -1,21 +1,9 @@
 /**
  * Dreaming Spanish Enhancer - Progress UI
- * Builds the DOM for the slide-out progress panel.
+ * Builds the DOM for the inline progress card on the progress page.
  */
 
 const ProgressUI = {
-  /** Detect whether DS site is in dark mode */
-  isDarkMode() {
-    const root = document.documentElement;
-    const colorScheme = getComputedStyle(root).getPropertyValue('color-scheme').trim();
-    if (colorScheme === 'dark') return true;
-    if (colorScheme === 'light') return false;
-    // Fallback: check background color luminance
-    const bg = getComputedStyle(root).getPropertyValue('--darkBackground');
-    if (bg) return true;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  },
-
   /** Level colors matching Dreaming Spanish badges */
   levelColors: {
     'Superbeginner': '#0ed4d4',
@@ -24,25 +12,18 @@ const ProgressUI = {
     'Advanced': '#ff2e65',
   },
 
-  createPanel(progressData) {
-    const panel = document.createElement('div');
-    panel.className = 'ds-panel';
-    if (this.isDarkMode()) panel.classList.add('ds-dark');
+  createCard(progressData) {
+    const card = document.createElement('div');
+    card.className = 'ds-card';
 
     const categories = Object.keys(progressData).filter(k => k !== '_userStats');
     if (categories.length === 0) {
-      panel.innerHTML = `
-        <div class="ds-panel-header">
-          <h2>Dreaming Spanish Enhancer</h2>
-          <div class="ds-panel-actions">
-            <button class="ds-panel-refresh" title="Refresh data">&#x21bb;</button>
-            <button class="ds-panel-close" title="Close">&times;</button>
-          </div>
+      card.innerHTML = `
+        <div class="ds-card-header">
+          <h2 class="ds-card-title">Enhanced Statistics</h2>
         </div>
-        <div class="ds-panel-body">
-          <p class="ds-empty">No progress data found. Watch some videos first!</p>
-        </div>`;
-      return panel;
+        <div class="ds-card-loading">No progress data found. Watch some videos first!</div>`;
+      return card;
     }
 
     const overall = this.computeOverallStats(progressData);
@@ -67,15 +48,12 @@ const ProgressUI = {
       </div>`;
     }).join('');
 
-    panel.innerHTML = `
-      <div class="ds-panel-header">
-        <h2>Progress Tracker</h2>
-        <div class="ds-panel-actions">
-          <button class="ds-panel-refresh" title="Refresh data">&#x21bb;</button>
-          <button class="ds-panel-close" title="Close">&times;</button>
-        </div>
+    card.innerHTML = `
+      <div class="ds-card-header">
+        <h2 class="ds-card-title">Enhanced Statistics</h2>
+        <button class="ds-card-refresh" title="Refresh data">&#x21bb;</button>
       </div>
-      <div class="ds-overall">
+      <div class="ds-card-stats">
         <div class="ds-stat">
           <span class="ds-stat-value">${overall.watchedHours.toFixed(1)}h</span>
           <span class="ds-stat-label">Watched</span>
@@ -113,35 +91,31 @@ const ProgressUI = {
           Hide completed
         </label>
       </div>
-      <div class="ds-panel-body">
+      <div class="ds-card-body-inner">
         ${sectionsHtml}
       </div>`;
 
     // Wire up tab switching
-    panel.querySelectorAll('.ds-tab').forEach(tab => {
+    card.querySelectorAll('.ds-tab').forEach(tab => {
       tab.addEventListener('click', () => {
-        panel.querySelectorAll('.ds-tab').forEach(t => t.classList.remove('ds-tab-active'));
-        panel.querySelectorAll('.ds-tab-content').forEach(s => s.classList.remove('ds-tab-content-active'));
+        card.querySelectorAll('.ds-tab').forEach(t => t.classList.remove('ds-tab-active'));
+        card.querySelectorAll('.ds-tab-content').forEach(s => s.classList.remove('ds-tab-content-active'));
         tab.classList.add('ds-tab-active');
-        panel.querySelector(`.ds-tab-content[data-category="${tab.dataset.category}"]`)
+        card.querySelector(`.ds-tab-content[data-category="${tab.dataset.category}"]`)
           .classList.add('ds-tab-content-active');
-        this.applyControls(panel, progressData);
+        this.applyControls(card, progressData);
       });
     });
 
-    // Wire up sorting
-    const sortSelect = panel.querySelector('.ds-sort-select');
-    sortSelect.addEventListener('change', () => this.applyControls(panel, progressData));
+    // Wire up sort, search, hide-completed
+    card.querySelector('.ds-sort-select').addEventListener('change', () =>
+      this.applyControls(card, progressData));
+    card.querySelector('.ds-search').addEventListener('input', () =>
+      this.applyControls(card, progressData));
+    card.querySelector('.ds-hide-completed-cb').addEventListener('change', () =>
+      this.applyControls(card, progressData));
 
-    // Wire up search/filter
-    const searchInput = panel.querySelector('.ds-search');
-    searchInput.addEventListener('input', () => this.applyControls(panel, progressData));
-
-    // Wire up hide completed
-    const hideCb = panel.querySelector('.ds-hide-completed-cb');
-    hideCb.addEventListener('change', () => this.applyControls(panel, progressData));
-
-    return panel;
+    return card;
   },
 
   computeOverallStats(progressData) {
@@ -155,8 +129,7 @@ const ProgressUI = {
       }
       const percent = totalHours > 0 ? Math.round((watchedHours / totalHours) * 100) : 0;
       return {
-        totalHours,
-        watchedHours,
+        totalHours, watchedHours,
         totalCount: userStats.totalVideos,
         watchedCount: userStats.watchedVideos,
         percent
@@ -204,7 +177,6 @@ const ProgressUI = {
     const isComplete = percent >= 100;
     const barColor = this.getBarColor(percent);
 
-    // Render level labels as colored badges matching DS site
     let labelHtml;
     if (category === 'level' && this.levelColors[label]) {
       const color = this.levelColors[label];
@@ -230,33 +202,28 @@ const ProgressUI = {
       </div>`;
   },
 
-  applyControls(panel, progressData) {
-    const sortKey = panel.querySelector('.ds-sort-select').value;
-    const filterText = (panel.querySelector('.ds-search').value || '').toLowerCase().trim();
-    const hideCompleted = panel.querySelector('.ds-hide-completed-cb').checked;
+  applyControls(container, progressData) {
+    const sortKey = container.querySelector('.ds-sort-select').value;
+    const filterText = (container.querySelector('.ds-search').value || '').toLowerCase().trim();
+    const hideCompleted = container.querySelector('.ds-hide-completed-cb').checked;
 
-    const activeContent = panel.querySelector('.ds-tab-content-active');
+    const activeContent = container.querySelector('.ds-tab-content-active');
     if (!activeContent) return;
 
     const rows = Array.from(activeContent.querySelectorAll('.ds-row'));
 
-    // Apply filter + hide completed
-    let visibleCount = 0;
-    let totalCount = rows.length;
     rows.forEach(row => {
       const label = (row.dataset.label || '').toLowerCase();
       const matchesFilter = !filterText || label.includes(filterText);
       const isComplete = row.classList.contains('ds-row-complete');
       const hidden = !matchesFilter || (hideCompleted && isComplete);
       row.classList.toggle('ds-row-hidden', hidden);
-      if (!hidden) visibleCount++;
     });
 
-    // Sort visible rows
     const sortFn = this.getSortFn(sortKey);
     rows.sort(sortFn).forEach(row => activeContent.appendChild(row));
 
-    // Update summary to reflect filter
+    // Update summary
     const summaryEl = activeContent.querySelector('.ds-category-summary');
     if (summaryEl) {
       const cat = activeContent.dataset.category;

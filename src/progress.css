@@ -1,26 +1,23 @@
-/* Dreaming Spanish Enhancer - Progress Panel Styles */
-/* Matches Dreaming Spanish color scheme with light/dark mode */
+/* Dreaming Spanish Enhancer - Inline Card Styles */
+/* Matches Dreaming Spanish page card appearance */
 
-/* ---- Theme Variables ---- */
 :root {
   --ds-primary: #ff9301;
   --ds-secondary: #6354b1;
   --ds-secondary-light: #8377c1;
-  --ds-secondary-lightest: #f0eef8;
   --ds-error: #ff6275;
 
-  /* Level colors */
   --ds-level-superbeginner: #0ed4d4;
   --ds-level-beginner: #239fe3;
   --ds-level-intermediate: #ff7f3c;
   --ds-level-advanced: #ff2e65;
 }
 
+/* ---- Card Container ---- */
 /* Light mode (default) */
-.ds-panel {
+.ds-card {
   --ds-bg: #ffffff;
   --ds-bg-base: #f3f2f7;
-  --ds-bg-card: #ffffff;
   --ds-bg-hover: #f0eef8;
   --ds-bg-input: #eef2f6;
   --ds-text: #272d37;
@@ -30,15 +27,21 @@
   --ds-border-light: #eef2f6;
   --ds-bar-track: #e8e5f0;
   --ds-scrollbar-thumb: #d5dde5;
-  --ds-shadow: rgba(0, 0, 0, 0.12);
-  --ds-shadow-heavy: rgba(0, 0, 0, 0.2);
+
+  background: var(--ds-bg);
+  border-radius: 12px;
+  padding: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  color: var(--ds-text);
+  grid-column: 1 / -1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 /* Dark mode */
-.ds-panel.ds-dark {
+.ds-card.ds-dark {
   --ds-bg: #181818;
   --ds-bg-base: #121212;
-  --ds-bg-card: #1e1e1e;
   --ds-bg-hover: #282828;
   --ds-bg-input: #282828;
   --ds-text: #ffffff;
@@ -48,119 +51,30 @@
   --ds-border-light: #282828;
   --ds-bar-track: #282828;
   --ds-scrollbar-thumb: #444444;
-  --ds-shadow: rgba(0, 0, 0, 0.4);
-  --ds-shadow-heavy: rgba(0, 0, 0, 0.6);
 }
 
-/* ---- Toggle Button (floating) ---- */
-#ds-enhancer-toggle {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 99999;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border: none;
-  background: var(--color-secondary, #6354b1);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: transform 0.2s, background 0.2s;
-}
-
-#ds-enhancer-toggle:hover {
-  transform: scale(1.1);
-  background: var(--color-secondary-light, #8377c1);
-}
-
-#ds-enhancer-toggle.ds-loading {
-  animation: ds-pulse 1.2s ease-in-out infinite;
-}
-
-#ds-enhancer-toggle.ds-error {
-  background: #dc3545;
-}
-
-#ds-enhancer-toggle.ds-ready {
-  background: var(--color-secondary, #6354b1);
-}
-
-@keyframes ds-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* ---- Panel ---- */
-.ds-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 420px;
-  max-width: 100vw;
-  height: 100vh;
-  z-index: 100000;
-  background: var(--ds-bg-base);
-  color: var(--ds-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: -4px 0 24px var(--ds-shadow-heavy);
-  animation: ds-slide-in 0.25s ease-out;
-  overflow: hidden;
-}
-
-.ds-panel-hidden {
-  transform: translateX(100%);
-  pointer-events: none;
-  animation: ds-slide-out 0.2s ease-in;
-}
-
-@keyframes ds-slide-in {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
-}
-
-@keyframes ds-slide-out {
-  from { transform: translateX(0); }
-  to { transform: translateX(100%); }
-}
-
-/* ---- Header ---- */
-.ds-panel-header {
+/* ---- Card Header ---- */
+.ds-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  background: var(--ds-bg);
-  border-bottom: 1px solid var(--ds-border);
-  flex-shrink: 0;
+  margin-bottom: 20px;
 }
 
-.ds-panel-header h2 {
+.ds-card-title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   color: var(--ds-text);
-  letter-spacing: 0.3px;
 }
 
-.ds-panel-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.ds-panel-actions button {
+.ds-card-refresh {
   background: var(--ds-bg-input);
   border: 1px solid var(--ds-border);
   color: var(--ds-text-secondary);
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 16px;
   display: flex;
@@ -169,19 +83,25 @@
   transition: all 0.15s;
 }
 
-.ds-panel-actions button:hover {
+.ds-card-refresh:hover {
   background: var(--ds-bg-hover);
   color: var(--ds-text);
   border-color: var(--ds-secondary);
 }
 
-/* ---- Overall Stats ---- */
-.ds-overall {
+.ds-card-loading {
+  text-align: center;
+  color: var(--ds-text-muted);
+  padding: 40px 0;
+  font-size: 14px;
+}
+
+/* ---- Stats Grid ---- */
+.ds-card-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  padding: 16px 20px 8px;
-  flex-shrink: 0;
+  margin-bottom: 8px;
 }
 
 .ds-stat {
@@ -205,13 +125,13 @@
   margin-top: 2px;
 }
 
+/* ---- Overall Progress Bar ---- */
 .ds-overall-bar-wrap {
-  margin: 8px 20px 16px;
   height: 6px;
   background: var(--ds-bar-track);
   border-radius: 3px;
   overflow: hidden;
-  flex-shrink: 0;
+  margin-bottom: 20px;
 }
 
 .ds-overall-bar {
@@ -225,23 +145,21 @@
 .ds-tabs {
   display: flex;
   gap: 2px;
-  padding: 0 20px;
   overflow-x: auto;
-  flex-shrink: 0;
   border-bottom: 1px solid var(--ds-border);
-  background: var(--ds-bg);
+  margin-bottom: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--ds-scrollbar-thumb) transparent;
 }
 
 .ds-tab {
-  padding: 8px 14px;
+  padding: 8px 16px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--ds-text-secondary);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   transition: all 0.15s;
@@ -262,15 +180,13 @@
   border-bottom-color: #8377c1;
 }
 
-/* ---- Controls Bar (sort, filter, hide completed) ---- */
+/* ---- Controls ---- */
 .ds-controls {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 20px;
+  padding: 10px 0;
   border-bottom: 1px solid var(--ds-border-light);
-  background: var(--ds-bg);
-  flex-shrink: 0;
   flex-wrap: wrap;
 }
 
@@ -333,10 +249,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 20px;
-  background: var(--ds-bg);
+  padding: 12px 0;
   border-bottom: 1px solid var(--ds-border-light);
-  flex-shrink: 0;
 }
 
 .ds-category-summary-text {
@@ -356,6 +270,8 @@
   background: var(--ds-bar-track);
   border-radius: 3px;
   overflow: hidden;
+  flex-shrink: 0;
+  margin-left: 12px;
 }
 
 .ds-category-summary-fill {
@@ -374,40 +290,47 @@
   display: block;
 }
 
-/* ---- Panel Body (scrollable) ---- */
-.ds-panel-body {
-  flex: 1;
+/* ---- Scrollable Body ---- */
+.ds-card-body-inner {
+  max-height: 600px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: var(--ds-scrollbar-thumb) var(--ds-bg-base);
+  scrollbar-color: var(--ds-scrollbar-thumb) transparent;
 }
 
-.ds-panel-body::-webkit-scrollbar {
+.ds-card-body-inner::-webkit-scrollbar {
   width: 6px;
 }
 
-.ds-panel-body::-webkit-scrollbar-track {
-  background: var(--ds-bg-base);
+.ds-card-body-inner::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.ds-panel-body::-webkit-scrollbar-thumb {
+.ds-card-body-inner::-webkit-scrollbar-thumb {
   background: var(--ds-scrollbar-thumb);
   border-radius: 3px;
 }
 
 /* ---- Progress Row ---- */
 .ds-row {
-  padding: 10px 20px;
+  padding: 10px 0;
   border-bottom: 1px solid var(--ds-border-light);
   transition: background 0.1s;
 }
 
+.ds-row:last-child {
+  border-bottom: none;
+}
+
 .ds-row:hover {
   background: var(--ds-bg-hover);
+  margin: 0 -8px;
+  padding: 10px 8px;
+  border-radius: 6px;
 }
 
 .ds-row.ds-row-complete {
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .ds-row.ds-row-hidden {
@@ -447,6 +370,7 @@
   margin-left: 4px;
 }
 
+/* ---- Progress Bar ---- */
 .ds-bar-wrap {
   position: relative;
   height: 18px;
@@ -477,13 +401,6 @@
 .ds-empty {
   text-align: center;
   color: var(--ds-text-muted);
-  padding: 40px 20px;
+  padding: 40px 0;
   font-size: 14px;
-}
-
-/* ---- Responsive ---- */
-@media (max-width: 480px) {
-  .ds-panel {
-    width: 100vw;
-  }
 }

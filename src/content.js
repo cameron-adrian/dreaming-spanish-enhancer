@@ -1,133 +1,220 @@
 /**
  * Dreaming Spanish Enhancer - Content Script
- * Runs on app.dreaming.com pages. Fetches progress data and
- * injects the progress panel into the page.
+ * Injects an "Enhanced Statistics" card into the progress page.
  */
 
 (function () {
   'use strict';
 
-  const PANEL_ID = 'ds-enhancer-panel';
+  const CARD_ID = 'ds-enhancer-card';
   let progressData = null;
   let isLoading = false;
+  let lastPath = null;
 
-  async function init() {
-    // Wait for the page to settle
-    await sleep(1500);
+  // ---- SPA Navigation Detection ----
 
-    const token = DSApi.getToken();
-    if (!token) return;
+  function onRouteChange() {
+    const path = location.pathname;
+    if (path === lastPath) return;
+    lastPath = path;
 
-    // Check if we have cached data
-    try {
-      const cached = await sendMessage({ type: 'GET_PROGRESS' });
-      if (cached.ok && cached.data) {
-        progressData = cached.data;
-        injectToggleButton();
-        return;
-      }
-    } catch (e) {
-      // Cache unavailable, fetch fresh
+    if (isProgressPage()) {
+      waitForGridAndInject();
+    } else {
+      removeCard();
     }
-
-    await fetchAndRender();
   }
 
-  async function fetchAndRender() {
-    if (isLoading) {
-      console.log('[DS Enhancer] Already loading, skipping duplicate fetch.');
+  function isProgressPage() {
+    return /\/progress\/?$/.test(location.pathname);
+  }
+
+  // Detect SPA navigation by patching history methods
+  function patchHistory() {
+    const origPush = history.pushState;
+    const origReplace = history.replaceState;
+
+    history.pushState = function () {
+      origPush.apply(this, arguments);
+      onRouteChange();
+    };
+    history.replaceState = function () {
+      origReplace.apply(this, arguments);
+      onRouteChange();
+    };
+    window.addEventListener('popstate', onRouteChange);
+  }
+
+  // ---- Grid Detection & Card Injection ----
+
+  function findGridContainer() {
+    // Look for headings that match known DS progress page sections
+    const headings = document.querySelectorAll('h2, h3, [class*="heading"], [class*="title"]');
+    for (const h of headings) {
+      const text = (h.textContent || '').trim().toLowerCase();
+      if (text === 'statistics' || text === 'outside hours' || text === 'levels') {
+        // Walk up to find the card, then its parent (the grid)
+        let card = h.closest('[class*="card"], [class*="box"], [class*="section"], [class*="container"]');
+        if (!card) {
+          // Try parent traversal: heading -> card wrapper -> grid
+          card = h.parentElement;
+          while (card && card !== document.body) {
+            const style = getComputedStyle(card);
+            if (style.borderRadius && parseFloat(style.borderRadius) >= 8 &&
+                style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+              break;
+            }
+            card = card.parentElement;
+          }
+        }
+        if (card && card.parentElement) {
+          const grid = card.parentElement;
+          const style = getComputedStyle(grid);
+          // Verify it looks like a grid or flex container
+          if (style.display === 'grid' || style.display === 'flex' ||
+              grid.children.length >= 2) {
+            return grid;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function waitForGridAndInject() {
+    // Already injected?
+    if (document.getElementById(CARD_ID)) return;
+
+    const grid = findGridContainer();
+    if (grid) {
+      injectCard(grid);
       return;
     }
+
+    // Grid not ready yet — observe DOM changes
+    const observer = new MutationObserver(() => {
+      if (!isProgressPage()) {
+        observer.disconnect();
+        return;
+      }
+      if (document.getElementById(CARD_ID)) {
+        observer.disconnect();
+        return;
+      }
+      const g = findGridContainer();
+      if (g) {
+        observer.disconnect();
+        injectCard(g);
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Safety timeout — stop observing after 15s
+    setTimeout(() => observer.disconnect(), 15000);
+  }
+
+  async function injectCard(gridContainer) {
+    if (document.getElementById(CARD_ID)) return;
+
+    // Create a placeholder card while loading
+    const placeholder = document.createElement('div');
+    placeholder.id = CARD_ID;
+    placeholder.className = 'ds-card';
+    if (isDarkMode()) placeholder.classList.add('ds-dark');
+    placeholder.innerHTML = `
+      <div class="ds-card-header">
+        <h2 class="ds-card-title">Enhanced Statistics</h2>
+      </div>
+      <div class="ds-card-loading">Loading progress data...</div>
+    `;
+    gridContainer.appendChild(placeholder);
+
+    // Fetch data
+    await fetchData();
+
+    // Replace placeholder with full card
+    const existing = document.getElementById(CARD_ID);
+    if (!existing) return;
+
+    if (!progressData || Object.keys(progressData).filter(k => k !== '_userStats').length === 0) {
+      existing.innerHTML = `
+        <div class="ds-card-header">
+          <h2 class="ds-card-title">Enhanced Statistics</h2>
+        </div>
+        <div class="ds-card-loading">No progress data available. Watch some videos first!</div>
+      `;
+      return;
+    }
+
+    const card = ProgressUI.createCard(progressData);
+    card.id = CARD_ID;
+    if (isDarkMode()) card.classList.add('ds-dark');
+    existing.replaceWith(card);
+
+    // Wire refresh
+    card.querySelector('.ds-card-refresh')?.addEventListener('click', async () => {
+      await sendMessage({ type: 'CLEAR_CACHE' });
+      card.querySelector('.ds-card-body-inner').innerHTML =
+        '<div class="ds-card-loading">Refreshing...</div>';
+      await fetchData();
+      const fresh = ProgressUI.createCard(progressData);
+      fresh.id = CARD_ID;
+      if (isDarkMode()) fresh.classList.add('ds-dark');
+      card.replaceWith(fresh);
+      fresh.querySelector('.ds-card-refresh')?.addEventListener('click', arguments.callee);
+    });
+  }
+
+  function removeCard() {
+    const card = document.getElementById(CARD_ID);
+    if (card) card.remove();
+  }
+
+  // ---- Data Fetching ----
+
+  async function fetchData() {
+    if (isLoading) return;
     isLoading = true;
 
     try {
-      updateToggleButton('loading');
+      const token = DSApi.getToken();
+      if (!token) return;
+
+      // Check cache first
+      try {
+        const cached = await sendMessage({ type: 'GET_PROGRESS' });
+        if (cached.ok && cached.data &&
+            Object.keys(cached.data).filter(k => k !== '_userStats').length > 0) {
+          progressData = cached.data;
+          return;
+        }
+      } catch (e) { /* cache unavailable */ }
+
       progressData = await DSApi.computeProgress();
 
-      // Cache it via background script
       sendMessage({
         type: 'SAVE_PROGRESS',
         data: progressData,
         language: 'es'
       });
-
-      injectToggleButton();
     } catch (err) {
       console.error('[DS Enhancer] Failed to load progress:', err);
-
-      if (err.message.includes('NOT_AUTHENTICATED')) {
-        console.error('[DS Enhancer] → You need to log in to Dreaming Spanish first.');
-      } else if (err.message.includes('AUTH_EXPIRED')) {
-        console.error('[DS Enhancer] → Your session has expired. Please log in again.');
-      } else if (err.message.includes('NETWORK_ERROR')) {
-        console.error('[DS Enhancer] → Network error. Check your connection and try refreshing.');
-      } else if (err.message.includes('API_ERROR')) {
-        console.error('[DS Enhancer] → The Dreaming Spanish API returned an error. It may be temporarily unavailable.');
-      }
-
-      updateToggleButton('error');
     } finally {
       isLoading = false;
     }
   }
 
-  function injectToggleButton() {
-    if (document.getElementById('ds-enhancer-toggle')) {
-      updateToggleButton('ready');
-      return;
-    }
+  // ---- Theme Detection ----
 
-    const btn = document.createElement('button');
-    btn.id = 'ds-enhancer-toggle';
-    btn.title = 'Dreaming Spanish Enhancer — Click to toggle progress panel';
-    btn.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <rect x="2" y="12" width="4" height="6" rx="1" fill="currentColor" opacity="0.5"/>
-        <rect x="8" y="8" width="4" height="10" rx="1" fill="currentColor" opacity="0.7"/>
-        <rect x="14" y="3" width="4" height="15" rx="1" fill="currentColor"/>
-      </svg>
-    `;
-    btn.addEventListener('click', togglePanel);
-    document.body.appendChild(btn);
-    updateToggleButton('ready');
+  function isDarkMode() {
+    const cs = getComputedStyle(document.documentElement).getPropertyValue('color-scheme').trim();
+    if (cs === 'dark') return true;
+    if (cs === 'light') return false;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
 
-  function updateToggleButton(state) {
-    const btn = document.getElementById('ds-enhancer-toggle');
-    if (!btn) return;
-    btn.classList.remove('ds-loading', 'ds-error', 'ds-ready');
-    btn.classList.add(`ds-${state}`);
-  }
-
-  function togglePanel() {
-    const existing = document.getElementById(PANEL_ID);
-    if (existing) {
-      existing.classList.toggle('ds-panel-hidden');
-      return;
-    }
-
-    if (!progressData || Object.keys(progressData).length === 0) {
-      fetchAndRender();
-      return;
-    }
-
-    const panel = ProgressUI.createPanel(progressData);
-    panel.id = PANEL_ID;
-    document.body.appendChild(panel);
-
-    // Close button
-    panel.querySelector('.ds-panel-close').addEventListener('click', () => {
-      panel.classList.add('ds-panel-hidden');
-    });
-
-    // Refresh button
-    panel.querySelector('.ds-panel-refresh').addEventListener('click', async () => {
-      await sendMessage({ type: 'CLEAR_CACHE' });
-      panel.remove();
-      await fetchAndRender();
-      togglePanel(); // re-open with fresh data
-    });
-  }
+  // ---- Helpers ----
 
   function sendMessage(msg) {
     return new Promise((resolve, reject) => {
@@ -141,23 +228,37 @@
     });
   }
 
-  function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
   // Listen for messages from popup
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'TOGGLE_PANEL') {
-      togglePanel();
+    if (message.type === 'OPEN_PROGRESS') {
+      if (!isProgressPage()) {
+        // Navigate to progress page — card will auto-inject
+        location.href = location.origin + '/' +
+          location.pathname.split('/')[1] + '/progress';
+      } else {
+        const card = document.getElementById(CARD_ID);
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
       sendResponse({ ok: true });
     }
     if (message.type === 'REFRESH') {
-      const existing = document.getElementById(PANEL_ID);
-      if (existing) existing.remove();
-      fetchAndRender();
+      removeCard();
+      if (isProgressPage()) waitForGridAndInject();
       sendResponse({ ok: true });
     }
   });
 
-  init();
+  // ---- Init ----
+  patchHistory();
+  onRouteChange();
+
+  // Also observe for late-loading content (SPA hydration)
+  const initObserver = new MutationObserver(() => {
+    if (isProgressPage() && !document.getElementById(CARD_ID)) {
+      waitForGridAndInject();
+    }
+  });
+  initObserver.observe(document.body, { childList: true, subtree: true });
+  // Stop the broad observer after 30s to save resources
+  setTimeout(() => initObserver.disconnect(), 30000);
 })();
