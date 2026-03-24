@@ -4,9 +4,30 @@
  */
 
 const ProgressUI = {
+  /** Detect whether DS site is in dark mode */
+  isDarkMode() {
+    const root = document.documentElement;
+    const colorScheme = getComputedStyle(root).getPropertyValue('color-scheme').trim();
+    if (colorScheme === 'dark') return true;
+    if (colorScheme === 'light') return false;
+    // Fallback: check background color luminance
+    const bg = getComputedStyle(root).getPropertyValue('--darkBackground');
+    if (bg) return true;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  },
+
+  /** Level colors matching Dreaming Spanish badges */
+  levelColors: {
+    'Superbeginner': '#28a745',
+    'Beginner': '#6354b1',
+    'Intermediate': '#e83e8c',
+    'Advanced': '#fd7e14',
+  },
+
   createPanel(progressData) {
     const panel = document.createElement('div');
     panel.className = 'ds-panel';
+    if (this.isDarkMode()) panel.classList.add('ds-dark');
 
     const categories = Object.keys(progressData).filter(k => k !== '_userStats');
     if (categories.length === 0) {
@@ -24,20 +45,26 @@ const ProgressUI = {
       return panel;
     }
 
-    // Compute overall stats
     const overall = this.computeOverallStats(progressData);
 
-    // Build tabs for each category
     const tabsHtml = categories.map((cat, i) =>
       `<button class="ds-tab ${i === 0 ? 'ds-tab-active' : ''}" data-category="${cat}">${this.formatCategoryName(cat)}</button>`
     ).join('');
 
-    // Build content sections for each category
-    const sectionsHtml = categories.map((cat, i) =>
-      `<div class="ds-tab-content ${i === 0 ? 'ds-tab-content-active' : ''}" data-category="${cat}">
+    const sectionsHtml = categories.map((cat, i) => {
+      const summary = this.computeCategorySummary(progressData[cat]);
+      return `<div class="ds-tab-content ${i === 0 ? 'ds-tab-content-active' : ''}" data-category="${cat}">
+        <div class="ds-category-summary">
+          <span class="ds-category-summary-text">
+            <span>${summary.completedLabels}</span> of ${summary.totalLabels} ${this.formatCategoryName(cat).toLowerCase()} completed
+          </span>
+          <div class="ds-category-summary-bar">
+            <div class="ds-category-summary-fill" style="width: ${summary.percent}%"></div>
+          </div>
+        </div>
         ${this.buildCategorySection(cat, progressData[cat])}
-      </div>`
-    ).join('');
+      </div>`;
+    }).join('');
 
     panel.innerHTML = `
       <div class="ds-panel-header">
@@ -69,19 +96,23 @@ const ProgressUI = {
         <div class="ds-overall-bar" style="width: ${overall.percent}%"></div>
       </div>
       <div class="ds-tabs">${tabsHtml}</div>
+      <div class="ds-controls">
+        <label>Sort:</label>
+        <select class="ds-sort-select">
+          <option value="name">Name</option>
+          <option value="percent-desc" selected>% High to Low</option>
+          <option value="percent-asc">% Low to High</option>
+          <option value="watched-desc">Hours Watched</option>
+          <option value="total-desc">Total Hours</option>
+          <option value="count-desc">Video Count</option>
+        </select>
+        <input class="ds-search" type="text" placeholder="Filter..." />
+        <label class="ds-hide-completed">
+          <input type="checkbox" class="ds-hide-completed-cb" />
+          Hide 100%
+        </label>
+      </div>
       <div class="ds-panel-body">
-        <div class="ds-sort-controls">
-          <label>Sort by:</label>
-          <select class="ds-sort-select">
-            <option value="name">Name</option>
-            <option value="percent-desc" selected>% Complete (High → Low)</option>
-            <option value="percent-asc">% Complete (Low → High)</option>
-            <option value="watched-desc">Hours Watched (High → Low)</option>
-            <option value="total-desc">Total Hours (High → Low)</option>
-            <option value="count-desc">Video Count (High → Low)</option>
-          </select>
-          <input class="ds-search" type="text" placeholder="Filter..." />
-        </div>
         ${sectionsHtml}
       </div>`;
 
@@ -93,21 +124,21 @@ const ProgressUI = {
         tab.classList.add('ds-tab-active');
         panel.querySelector(`.ds-tab-content[data-category="${tab.dataset.category}"]`)
           .classList.add('ds-tab-content-active');
+        this.applyControls(panel, progressData);
       });
     });
 
     // Wire up sorting
     const sortSelect = panel.querySelector('.ds-sort-select');
-    sortSelect.addEventListener('change', () => {
-      this.applySortAndFilter(panel, progressData, sortSelect.value,
-        panel.querySelector('.ds-search').value);
-    });
+    sortSelect.addEventListener('change', () => this.applyControls(panel, progressData));
 
     // Wire up search/filter
     const searchInput = panel.querySelector('.ds-search');
-    searchInput.addEventListener('input', () => {
-      this.applySortAndFilter(panel, progressData, sortSelect.value, searchInput.value);
-    });
+    searchInput.addEventListener('input', () => this.applyControls(panel, progressData));
+
+    // Wire up hide completed
+    const hideCb = panel.querySelector('.ds-hide-completed-cb');
+    hideCb.addEventListener('change', () => this.applyControls(panel, progressData));
 
     return panel;
   },
@@ -115,7 +146,6 @@ const ProgressUI = {
   computeOverallStats(progressData) {
     const userStats = progressData._userStats;
     if (userStats) {
-      // Use level category for total hours (no double-counting since each video has one level)
       const levelLabels = progressData.level || {};
       let totalHours = 0, watchedHours = 0;
       for (const stats of Object.values(levelLabels)) {
@@ -132,9 +162,8 @@ const ProgressUI = {
       };
     }
 
-    // Fallback: use first category
-    const firstCat = Object.keys(progressData)[0];
-    const labels = progressData[firstCat];
+    const firstCat = Object.keys(progressData).filter(k => k !== '_userStats')[0];
+    const labels = progressData[firstCat] || {};
     let totalHours = 0, watchedHours = 0, totalCount = 0, watchedCount = 0;
     for (const stats of Object.values(labels)) {
       totalHours += stats.total;
@@ -144,6 +173,14 @@ const ProgressUI = {
     }
     const percent = totalHours > 0 ? Math.round((watchedHours / totalHours) * 100) : 0;
     return { totalHours, watchedHours, totalCount, watchedCount, percent };
+  },
+
+  computeCategorySummary(labels) {
+    const entries = Object.values(labels);
+    const totalLabels = entries.length;
+    const completedLabels = entries.filter(s => s.total > 0 && s.watched >= s.total).length;
+    const percent = totalLabels > 0 ? Math.round((completedLabels / totalLabels) * 100) : 0;
+    return { totalLabels, completedLabels, percent };
   },
 
   buildCategorySection(category, labels) {
@@ -158,15 +195,16 @@ const ProgressUI = {
       return '<p class="ds-empty">No data for this category.</p>';
     }
 
-    return entries.map(([label, stats]) => this.buildProgressRow(label, stats)).join('');
+    return entries.map(([label, stats]) => this.buildProgressRow(label, stats, category)).join('');
   },
 
-  buildProgressRow(label, stats) {
+  buildProgressRow(label, stats, category) {
     const percent = stats.total > 0 ? Math.round((stats.watched / stats.total) * 100) : 0;
-    const barColor = this.getBarColor(percent);
+    const isComplete = percent >= 100;
+    const barColor = this.getBarColor(percent, label, category);
 
     return `
-      <div class="ds-row" data-label="${this.escapeHtml(label)}" data-percent="${percent}"
+      <div class="ds-row ${isComplete ? 'ds-row-complete' : ''}" data-label="${this.escapeHtml(label)}" data-percent="${percent}"
            data-watched="${stats.watched}" data-total="${stats.total}" data-count="${stats.count}">
         <div class="ds-row-header">
           <span class="ds-row-label">${this.escapeHtml(label)}</span>
@@ -182,23 +220,48 @@ const ProgressUI = {
       </div>`;
   },
 
-  applySortAndFilter(panel, progressData, sortKey, filterText) {
-    const filter = (filterText || '').toLowerCase().trim();
+  applyControls(panel, progressData) {
+    const sortKey = panel.querySelector('.ds-sort-select').value;
+    const filterText = (panel.querySelector('.ds-search').value || '').toLowerCase().trim();
+    const hideCompleted = panel.querySelector('.ds-hide-completed-cb').checked;
+
     const activeContent = panel.querySelector('.ds-tab-content-active');
     if (!activeContent) return;
 
     const rows = Array.from(activeContent.querySelectorAll('.ds-row'));
 
-    // Filter
+    // Apply filter + hide completed
+    let visibleCount = 0;
+    let totalCount = rows.length;
     rows.forEach(row => {
       const label = (row.dataset.label || '').toLowerCase();
-      row.style.display = (!filter || label.includes(filter)) ? '' : 'none';
+      const matchesFilter = !filterText || label.includes(filterText);
+      const isComplete = row.classList.contains('ds-row-complete');
+      const hidden = !matchesFilter || (hideCompleted && isComplete);
+      row.classList.toggle('ds-row-hidden', hidden);
+      if (!hidden) visibleCount++;
     });
 
-    // Sort
+    // Sort visible rows
     const sortFn = this.getSortFn(sortKey);
-    const sorted = rows.sort(sortFn);
-    sorted.forEach(row => activeContent.appendChild(row));
+    rows.sort(sortFn).forEach(row => activeContent.appendChild(row));
+
+    // Update summary to reflect filter
+    const summary = activeContent.querySelector('.ds-category-summary');
+    if (summary && hideCompleted) {
+      const completedCount = rows.filter(r => r.classList.contains('ds-row-complete')).length;
+      const remaining = totalCount - completedCount;
+      summary.querySelector('.ds-category-summary-text').innerHTML =
+        `<span>${completedCount}</span> of ${totalCount} completed (${remaining} remaining)`;
+    } else if (summary) {
+      const cat = activeContent.dataset.category;
+      const labels = progressData[cat];
+      if (labels) {
+        const s = this.computeCategorySummary(labels);
+        summary.querySelector('.ds-category-summary-text').innerHTML =
+          `<span>${s.completedLabels}</span> of ${s.totalLabels} ${this.formatCategoryName(cat).toLowerCase()} completed`;
+      }
+    }
   },
 
   getSortFn(sortKey) {
@@ -220,12 +283,17 @@ const ProgressUI = {
     }
   },
 
-  getBarColor(percent) {
-    if (percent >= 100) return '#4CAF50';
-    if (percent >= 75) return '#8BC34A';
-    if (percent >= 50) return '#FFC107';
-    if (percent >= 25) return '#FF9800';
-    return '#FF5722';
+  getBarColor(percent, label, category) {
+    // Use DS level colors for level category
+    if (category === 'level' && this.levelColors[label]) {
+      return this.levelColors[label];
+    }
+    // Default: orange gradient based on DS primary
+    if (percent >= 100) return '#28a745';
+    if (percent >= 75) return '#ff9301';
+    if (percent >= 50) return '#ffb347';
+    if (percent >= 25) return '#6354b1';
+    return '#8377c1';
   },
 
   formatCategoryName(name) {

@@ -125,13 +125,7 @@
       await sendMessage({ type: 'CLEAR_CACHE' });
       panel.remove();
       await fetchAndRender();
-      // Re-open panel after refresh
-      const newPanel = ProgressUI.createPanel(progressData);
-      newPanel.id = PANEL_ID;
-      document.body.appendChild(newPanel);
-      newPanel.querySelector('.ds-panel-close').addEventListener('click', () => {
-        newPanel.classList.add('ds-panel-hidden');
-      });
+      togglePanel(); // re-open with fresh data
     });
   }
 
