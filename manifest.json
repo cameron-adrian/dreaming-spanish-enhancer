@@ -1,0 +1,41 @@
+{
+  "name": "Dreaming Spanish Enhancer",
+  "description": "Progress bars and stats for your Dreaming Spanish journey. Track completion by country, guide, topic, and more.",
+  "version": "0.1.0",
+  "manifest_version": 3,
+  "icons": {
+    "16": "images/icon-16.png",
+    "48": "images/icon-48.png",
+    "128": "images/icon-128.png"
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://app.dreaming.com/*",
+        "https://app.dreamingspanish.com/*"
+      ],
+      "js": ["src/api.js", "src/progress-ui.js", "src/content.js"],
+      "css": ["src/progress.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "images/icon-16.png",
+      "48": "images/icon-48.png",
+      "128": "images/icon-128.png"
+    }
+  },
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://app.dreaming.com/*",
+    "https://app.dreamingspanish.com/*"
+  ]
+}
