@@ -48,36 +48,14 @@
   // ---- Grid Detection & Card Injection ----
 
   function findGridContainer() {
-    // Look for headings that match known DS progress page sections
-    const headings = document.querySelectorAll('h2, h3, [class*="heading"], [class*="title"]');
-    for (const h of headings) {
-      const text = (h.textContent || '').trim().toLowerCase();
-      if (text === 'statistics' || text === 'outside hours' || text === 'levels') {
-        // Walk up to find the card, then its parent (the grid)
-        let card = h.closest('[class*="card"], [class*="box"], [class*="section"], [class*="container"]');
-        if (!card) {
-          // Try parent traversal: heading -> card wrapper -> grid
-          card = h.parentElement;
-          while (card && card !== document.body) {
-            const style = getComputedStyle(card);
-            if (style.borderRadius && parseFloat(style.borderRadius) >= 8 &&
-                style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)') {
-              break;
-            }
-            card = card.parentElement;
-          }
-        }
-        if (card && card.parentElement) {
-          const grid = card.parentElement;
-          const style = getComputedStyle(grid);
-          // Verify it looks like a grid or flex container
-          if (style.display === 'grid' || style.display === 'flex' ||
-              grid.children.length >= 2) {
-            return grid;
-          }
-        }
-      }
-    }
+    // Try the exact DS progress page class names first
+    const column = document.querySelector('.ds-progress-page__column');
+    if (column) return column;
+
+    // Fallback: look for the masonry container and use its first column
+    const masonry = document.querySelector('.ds-progress-page__masonry');
+    if (masonry && masonry.children.length > 0) return masonry.children[0];
+
     return null;
   }
 
