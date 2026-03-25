@@ -368,7 +368,7 @@ const ProgressUI = {
               ${section.videos.map(v => `
                 <a class="ds-ad-video-item" href="${this.videoUrl(v)}" target="_blank">
                   <span class="ds-ad-video-title">${this.escapeHtml(v.title)}</span>
-                  <span class="ds-ad-video-meta">${this.levelBadge(v.level)} ${this.formatDuration(v.duration)}</span>
+                  <span class="ds-ad-video-meta">${this.levelBadge(v.level)}${v.difficultyScore ? ` <span class="ds-ad-difficulty">${v.difficultyScore}</span>` : ''} ${this.formatDuration(v.duration)}</span>
                 </a>
               `).join('')}
             </div>
@@ -400,7 +400,7 @@ const ProgressUI = {
           <div class="ds-ad-nearly-item${hidden}" data-index="${i}">
             <a class="ds-ad-nearly-header" href="${this.videoUrl(v)}" target="_blank">
               <span class="ds-ad-video-title">${this.escapeHtml(v.title)}</span>
-              <span class="ds-ad-video-meta">${this.levelBadge(v.level)} ${this.formatDuration(v.remainingSeconds)} left${v.guide ? ' · ' + this.escapeHtml(v.guide) : ''}</span>
+              <span class="ds-ad-video-meta">${this.levelBadge(v.level)}${v.difficultyScore ? ` <span class="ds-ad-difficulty">${v.difficultyScore}</span>` : ''} ${this.formatDuration(v.remainingSeconds)} left${v.guide ? ' · ' + this.escapeHtml(v.guide) : ''}</span>
             </a>
             <div class="ds-bar-wrap">
               <div class="ds-bar" style="width: ${v.progress}%; background: ${barColor}"></div>

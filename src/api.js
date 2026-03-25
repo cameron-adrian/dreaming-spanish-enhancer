@@ -240,6 +240,7 @@ const DSApi = {
           title: video.title || 'Untitled',
           guide: (video.guides || [])[0] || '',
           level: video.level || '',
+          difficultyScore: video.difficultyScore || 0,
           duration: video.duration || 0,
           progress: Math.round(progress * 100),
           remainingSeconds: Math.round((1 - progress) * (video.duration || 0)),
@@ -298,6 +299,7 @@ const DSApi = {
               title: video.title || 'Untitled',
               duration: video.duration || 0,
               level: video.level || '',
+              difficultyScore: video.difficultyScore || 0,
             });
           }
         }

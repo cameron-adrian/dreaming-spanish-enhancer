@@ -544,6 +544,18 @@
   white-space: nowrap;
   margin-left: 12px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ds-ad-difficulty {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ds-text-secondary);
+  background: var(--ds-bg-input);
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 /* Nearly Finished */
