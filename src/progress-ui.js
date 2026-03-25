@@ -28,28 +28,19 @@ const ProgressUI = {
 
     const overall = this.computeOverallStats(progressData);
 
-    const almostDone = progressData._almostDone;
-    const hasAlmostDone = almostDone && (
-      (almostDone.sectionCompleters && almostDone.sectionCompleters.length > 0) ||
-      (almostDone.nearlyFinished && almostDone.nearlyFinished.length > 0)
-    );
+    const almostDone = progressData._almostDone || { sectionCompleters: [], nearlyFinished: [] };
+    const almostDoneHtml = this.buildAlmostDoneTab(almostDone);
 
-    const tabsHtml = (hasAlmostDone
-      ? `<button class="ds-tab ds-tab-active" data-category="_almostDone">Almost Done!</button>`
-      : '') +
-      categories.map((cat, i) =>
-        `<button class="ds-tab ${!hasAlmostDone && i === 0 ? 'ds-tab-active' : ''}" data-category="${cat}">${this.formatCategoryName(cat)}</button>`
+    const tabsHtml = `<button class="ds-tab ds-tab-active" data-category="_almostDone">Almost Done!</button>` +
+      categories.map(cat =>
+        `<button class="ds-tab" data-category="${cat}">${this.formatCategoryName(cat)}</button>`
       ).join('');
 
-    const almostDoneHtml = hasAlmostDone ? this.buildAlmostDoneTab(almostDone) : '';
-
-    const sectionsHtml = (hasAlmostDone
-      ? `<div class="ds-tab-content ds-tab-content-active" data-category="_almostDone">${almostDoneHtml}</div>`
-      : '') +
-      categories.map((cat, i) => {
+    const sectionsHtml = `<div class="ds-tab-content ds-tab-content-active" data-category="_almostDone">${almostDoneHtml}</div>` +
+      categories.map(cat => {
         const summary = this.computeCategorySummary(progressData[cat]);
         const remaining = summary.totalLabels - summary.completedLabels;
-        return `<div class="ds-tab-content ${!hasAlmostDone && i === 0 ? 'ds-tab-content-active' : ''}" data-category="${cat}">
+        return `<div class="ds-tab-content" data-category="${cat}">
         <div class="ds-category-summary">
           <span class="ds-category-summary-text">
             <span>${summary.completedLabels}</span> of ${summary.totalLabels} ${this.formatCategoryPlural(cat)} completed — ${summary.percent}% (${remaining} remaining)
@@ -89,7 +80,7 @@ const ProgressUI = {
         <div class="ds-overall-bar" style="width: ${overall.percent}%"></div>
       </div>
       <div class="ds-tabs">${tabsHtml}</div>
-      <div class="ds-controls"${hasAlmostDone ? ' style="display:none"' : ''}>
+      <div class="ds-controls" style="display:none">
         <label>Sort:</label>
         <select class="ds-sort-select">
           <option value="name">Name</option>
@@ -319,6 +310,13 @@ const ProgressUI = {
       .trim();
   },
 
+  /** Build a link to a DS video page. Tries slug first, falls back to ID. */
+  videoUrl(video) {
+    const langPath = (location.pathname.split('/')[1]) || 'spanish';
+    const slug = video.slug || video.id;
+    return `/${langPath}/video/${slug}`;
+  },
+
   formatCategoryPlural(name) {
     const singular = this.formatCategoryName(name).toLowerCase();
     if (singular === 'series') return 'series';
@@ -359,10 +357,10 @@ const ProgressUI = {
             </div>
             <div class="ds-ad-video-list">
               ${section.videos.map(v => `
-                <div class="ds-ad-video-item">
+                <a class="ds-ad-video-item" href="${this.videoUrl(v)}" target="_blank">
                   <span class="ds-ad-video-title">${this.escapeHtml(v.title)}</span>
                   <span class="ds-ad-video-meta">${this.formatDuration(v.duration)}${v.level ? ' · ' + v.level : ''}</span>
-                </div>
+                </a>
               `).join('')}
             </div>
           </div>`;
@@ -391,10 +389,10 @@ const ProgressUI = {
         const hidden = i >= 10 ? ' ds-ad-nearly-hidden' : '';
         html += `
           <div class="ds-ad-nearly-item${hidden}" data-index="${i}">
-            <div class="ds-ad-nearly-header">
+            <a class="ds-ad-nearly-header" href="${this.videoUrl(v)}" target="_blank">
               <span class="ds-ad-video-title">${this.escapeHtml(v.title)}</span>
               <span class="ds-ad-video-meta">${this.formatDuration(v.remainingSeconds)} left${v.guide ? ' · ' + this.escapeHtml(v.guide) : ''}</span>
-            </div>
+            </a>
             <div class="ds-bar-wrap">
               <div class="ds-bar" style="width: ${v.progress}%; background: ${barColor}"></div>
               <span class="ds-bar-pct">${v.progress}%</span>

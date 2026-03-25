@@ -163,9 +163,14 @@
       try {
         const cached = await sendMessage({ type: 'GET_PROGRESS' });
         if (cached.ok && cached.data &&
-            Object.keys(cached.data).filter(k => !k.startsWith('_')).length > 0) {
+            Object.keys(cached.data).filter(k => !k.startsWith('_')).length > 0 &&
+            cached.data._almostDone) {
           progressData = cached.data;
+          console.log('[DS Enhancer] Using cached data');
           return;
+        }
+        if (cached.ok && cached.data && !cached.data._almostDone) {
+          console.log('[DS Enhancer] Cache missing _almostDone, fetching fresh data');
         }
       } catch (e) { /* cache unavailable */ }
 

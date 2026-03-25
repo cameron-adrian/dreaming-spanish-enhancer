@@ -72,6 +72,18 @@ const DSApi = {
 
     console.log(`[DS Enhancer] Catalog: ${videos.length} videos, ${watchedVideos.length} watch records`);
 
+    // Log sample watch record fields for debugging
+    if (watchedVideos.length > 0) {
+      const sample = watchedVideos[0];
+      console.log('[DS Enhancer] Sample watchedVideo fields:', Object.keys(sample));
+      console.log('[DS Enhancer] Sample watchedVideo:', JSON.stringify(sample).slice(0, 500));
+    }
+    if (videos.length > 0) {
+      const sample = videos[0];
+      console.log('[DS Enhancer] Sample video fields:', Object.keys(sample));
+      console.log('[DS Enhancer] Sample video:', JSON.stringify(sample).slice(0, 500));
+    }
+
     // Build lookup: videoId → watched info
     const watchedMap = new Map();
     for (const w of watchedVideos) {
@@ -182,25 +194,36 @@ const DSApi = {
   computeAlmostDone(videos, watchedMap, categories, seriesMap) {
     // --- Nearly Finished: videos with partial progress ---
     const nearlyFinished = [];
+    let partialWatchCount = 0; // records with watched=false but exist in watchedMap
+    let hasProgressField = false;
     for (const video of videos) {
       const watchInfo = watchedMap.get(video._id);
       if (!watchInfo) continue;
       if (watchInfo.watched === true) continue; // fully watched, skip
 
+      partialWatchCount++;
+
       // Try to get partial progress from various possible API fields
       let progress = 0;
       if (typeof watchInfo.progress === 'number') {
+        hasProgressField = true;
         progress = watchInfo.progress; // 0-1 or 0-100
         if (progress > 1) progress = progress / 100; // normalize to 0-1
       } else if (typeof watchInfo.currentTime === 'number' && video.duration > 0) {
+        hasProgressField = true;
         progress = watchInfo.currentTime / video.duration;
       } else if (typeof watchInfo.watchedTime === 'number' && video.duration > 0) {
+        hasProgressField = true;
         progress = watchInfo.watchedTime / video.duration;
+      } else if (typeof watchInfo.secondsWatched === 'number' && video.duration > 0) {
+        hasProgressField = true;
+        progress = watchInfo.secondsWatched / video.duration;
       }
 
       if (progress > 0 && progress < 1) {
         nearlyFinished.push({
           id: video._id,
+          slug: video.slug || video.path || '',
           title: video.title || 'Untitled',
           guide: (video.guides || [])[0] || '',
           level: video.level || '',
@@ -210,6 +233,7 @@ const DSApi = {
         });
       }
     }
+    console.log(`[DS Enhancer] Almost Done — partial watch records: ${partialWatchCount}, has progress field: ${hasProgressField}, nearly finished: ${nearlyFinished.length}`);
     // Sort by progress descending (closest to 100% first)
     nearlyFinished.sort((a, b) => b.progress - a.progress);
 
@@ -257,6 +281,7 @@ const DSApi = {
           if (!isWatched) {
             unwatchedVideos.push({
               id: video._id,
+              slug: video.slug || video.path || '',
               title: video.title || 'Untitled',
               duration: video.duration || 0,
               level: video.level || '',
@@ -281,6 +306,12 @@ const DSApi = {
 
     // Sort section completers: fewest remaining first, then highest % first
     sectionCompleters.sort((a, b) => a.remaining - b.remaining || b.percent - a.percent);
+
+    console.log(`[DS Enhancer] Almost Done — section completers: ${sectionCompleters.length}`);
+    if (sectionCompleters.length > 0) {
+      console.log('[DS Enhancer] Top section completer:', sectionCompleters[0].label,
+        `(${sectionCompleters[0].category}, ${sectionCompleters[0].remaining} remaining)`);
+    }
 
     return { sectionCompleters, nearlyFinished };
   }

@@ -505,6 +505,16 @@
   justify-content: space-between;
   align-items: baseline;
   padding: 4px 0;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.ds-ad-video-item:hover {
+  background: var(--ds-bg-hover);
+  padding: 4px 6px;
+  margin: 0 -6px;
 }
 
 .ds-ad-video-title {
@@ -564,4 +574,19 @@
   justify-content: space-between;
   align-items: baseline;
   margin-bottom: 4px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 4px;
+  transition: background 0.1s;
+  padding: 2px 0;
+}
+
+.ds-ad-nearly-header:hover {
+  background: var(--ds-bg-hover);
+  padding: 2px 6px;
+  margin: 0 -6px;
+}
+
+.ds-ad-video-title:hover {
+  color: var(--ds-secondary);
 }
