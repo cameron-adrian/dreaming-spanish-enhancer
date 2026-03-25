@@ -181,69 +181,6 @@
 }
 
 /* ---- Controls ---- */
-.ds-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--ds-border-light);
-  flex-wrap: wrap;
-}
-
-.ds-controls label {
-  font-size: 11px;
-  color: var(--ds-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.ds-sort-select {
-  background: var(--ds-bg-input);
-  color: var(--ds-text);
-  border: 1px solid var(--ds-border);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.ds-search {
-  flex: 1;
-  min-width: 80px;
-  background: var(--ds-bg-input);
-  color: var(--ds-text);
-  border: 1px solid var(--ds-border);
-  border-radius: 6px;
-  padding: 5px 10px;
-  font-size: 12px;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.ds-search:focus {
-  border-color: #6354b1;
-}
-
-.ds-search::placeholder {
-  color: var(--ds-text-muted);
-}
-
-.ds-hide-completed {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  font-size: 11px;
-  color: var(--ds-text-secondary);
-  white-space: nowrap;
-  user-select: none;
-}
-
-.ds-hide-completed input[type="checkbox"] {
-  accent-color: #6354b1;
-  cursor: pointer;
-}
-
 /* ---- Category Summary ---- */
 .ds-category-summary {
   display: flex;
@@ -333,9 +270,6 @@
   opacity: 0.5;
 }
 
-.ds-row.ds-row-hidden {
-  display: none;
-}
 
 .ds-row-header {
   display: flex;

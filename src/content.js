@@ -158,17 +158,22 @@
     existing.replaceWith(card);
 
     // Wire refresh
-    card.querySelector('.ds-card-refresh')?.addEventListener('click', async () => {
-      await sendMessage({ type: 'CLEAR_CACHE' });
-      card.querySelector('.ds-card-body-inner').innerHTML =
-        '<div class="ds-card-loading">Refreshing...</div>';
-      await fetchData();
-      const fresh = ProgressUI.createCard(progressData);
-      fresh.id = CARD_ID;
-      if (isDarkMode()) fresh.classList.add('ds-dark');
-      card.replaceWith(fresh);
-      fresh.querySelector('.ds-card-refresh')?.addEventListener('click', arguments.callee);
-    });
+    function handleRefresh() {
+      (async () => {
+        const current = document.getElementById(CARD_ID);
+        if (!current) return;
+        await sendMessage({ type: 'CLEAR_CACHE' });
+        current.querySelector('.ds-card-body-inner').innerHTML =
+          '<div class="ds-card-loading">Refreshing...</div>';
+        await fetchData();
+        const fresh = ProgressUI.createCard(progressData);
+        fresh.id = CARD_ID;
+        if (isDarkMode()) fresh.classList.add('ds-dark');
+        current.replaceWith(fresh);
+        fresh.querySelector('.ds-card-refresh')?.addEventListener('click', handleRefresh);
+      })();
+    }
+    card.querySelector('.ds-card-refresh')?.addEventListener('click', handleRefresh);
   }
 
   function removeCard() {
@@ -262,14 +267,4 @@
   console.log('[DS Enhancer] Init — current path:', location.pathname, 'isProgress:', isProgressPage());
   patchHistory();
   onRouteChange();
-
-  // Also observe for late-loading content (SPA hydration)
-  const initObserver = new MutationObserver(() => {
-    if (isProgressPage() && !document.getElementById(CARD_ID)) {
-      waitForGridAndInject();
-    }
-  });
-  initObserver.observe(document.body, { childList: true, subtree: true });
-  // Stop the broad observer after 30s to save resources
-  setTimeout(() => initObserver.disconnect(), 30000);
 })();

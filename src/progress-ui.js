@@ -80,22 +80,6 @@ const ProgressUI = {
         <div class="ds-overall-bar" style="width: ${overall.percent}%"></div>
       </div>
       <div class="ds-tabs">${tabsHtml}</div>
-      <div class="ds-controls" style="display:none">
-        <label>Sort:</label>
-        <select class="ds-sort-select">
-          <option value="name">Name</option>
-          <option value="percent-desc" selected>% High to Low</option>
-          <option value="percent-asc">% Low to High</option>
-          <option value="watched-desc">Hours Watched</option>
-          <option value="total-desc">Total Hours</option>
-          <option value="count-desc">Video Count</option>
-        </select>
-        <input class="ds-search" type="text" placeholder="Filter..." />
-        <label class="ds-hide-completed">
-          <input type="checkbox" class="ds-hide-completed-cb" />
-          Hide completed
-        </label>
-      </div>
       <div class="ds-card-body-inner">
         ${sectionsHtml}
       </div>`;
@@ -108,26 +92,8 @@ const ProgressUI = {
         tab.classList.add('ds-tab-active');
         card.querySelector(`.ds-tab-content[data-category="${tab.dataset.category}"]`)
           .classList.add('ds-tab-content-active');
-
-        // Hide sort/filter controls on Almost Done tab
-        const controls = card.querySelector('.ds-controls');
-        if (controls) {
-          controls.style.display = tab.dataset.category === '_almostDone' ? 'none' : '';
-        }
-
-        if (tab.dataset.category !== '_almostDone') {
-          this.applyControls(card, progressData);
-        }
       });
     });
-
-    // Wire up sort, search, hide-completed
-    card.querySelector('.ds-sort-select').addEventListener('change', () =>
-      this.applyControls(card, progressData));
-    card.querySelector('.ds-search').addEventListener('input', () =>
-      this.applyControls(card, progressData));
-    card.querySelector('.ds-hide-completed-cb').addEventListener('change', () =>
-      this.applyControls(card, progressData));
 
     // Wire up Almost Done sub-tabs
     card.querySelectorAll('.ds-ad-subtab').forEach(btn => {
@@ -239,60 +205,6 @@ const ProgressUI = {
           <span class="ds-bar-pct">${percent}%</span>
         </div>
       </div>`;
-  },
-
-  applyControls(container, progressData) {
-    const sortKey = container.querySelector('.ds-sort-select').value;
-    const filterText = (container.querySelector('.ds-search').value || '').toLowerCase().trim();
-    const hideCompleted = container.querySelector('.ds-hide-completed-cb').checked;
-
-    const activeContent = container.querySelector('.ds-tab-content-active');
-    if (!activeContent) return;
-
-    const rows = Array.from(activeContent.querySelectorAll('.ds-row'));
-
-    rows.forEach(row => {
-      const label = (row.dataset.label || '').toLowerCase();
-      const matchesFilter = !filterText || label.includes(filterText);
-      const isComplete = row.classList.contains('ds-row-complete');
-      const hidden = !matchesFilter || (hideCompleted && isComplete);
-      row.classList.toggle('ds-row-hidden', hidden);
-    });
-
-    const sortFn = this.getSortFn(sortKey);
-    rows.sort(sortFn).forEach(row => activeContent.appendChild(row));
-
-    // Update summary
-    const summaryEl = activeContent.querySelector('.ds-category-summary');
-    if (summaryEl) {
-      const cat = activeContent.dataset.category;
-      const labels = progressData[cat];
-      if (labels) {
-        const s = this.computeCategorySummary(labels);
-        const remaining = s.totalLabels - s.completedLabels;
-        summaryEl.querySelector('.ds-category-summary-text').innerHTML =
-          `<span>${s.completedLabels}</span> of ${s.totalLabels} ${this.formatCategoryPlural(cat)} completed — ${s.percent}% (${remaining} remaining)`;
-      }
-    }
-  },
-
-  getSortFn(sortKey) {
-    switch (sortKey) {
-      case 'name':
-        return (a, b) => (a.dataset.label || '').localeCompare(b.dataset.label || '');
-      case 'percent-desc':
-        return (a, b) => Number(b.dataset.percent) - Number(a.dataset.percent);
-      case 'percent-asc':
-        return (a, b) => Number(a.dataset.percent) - Number(b.dataset.percent);
-      case 'watched-desc':
-        return (a, b) => Number(b.dataset.watched) - Number(a.dataset.watched);
-      case 'total-desc':
-        return (a, b) => Number(b.dataset.total) - Number(a.dataset.total);
-      case 'count-desc':
-        return (a, b) => Number(b.dataset.count) - Number(a.dataset.count);
-      default:
-        return () => 0;
-    }
   },
 
   getBarColor(percent) {
