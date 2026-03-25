@@ -51,12 +51,14 @@
   // ---- Grid Detection & Card Injection ----
 
   function findGridContainer() {
-    // Try the exact DS progress page class names first
-    const column = document.querySelector('.ds-progress-page__column');
-    if (column) return column;
+    // Target the right (second) column — it's wider and has more room
+    const columns = document.querySelectorAll('.ds-progress-page__column');
+    if (columns.length >= 2) return columns[1];
+    if (columns.length === 1) return columns[0];
 
-    // Fallback: look for the masonry container and use its first column
+    // Fallback: look for the masonry container and use the right column
     const masonry = document.querySelector('.ds-progress-page__masonry');
+    if (masonry && masonry.children.length >= 2) return masonry.children[1];
     if (masonry && masonry.children.length > 0) return masonry.children[0];
 
     return null;
