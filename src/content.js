@@ -17,8 +17,11 @@
     const path = location.pathname;
     if (path === lastPath) return;
     lastPath = path;
+    console.log('[DS Enhancer] Route changed:', path, 'isProgress:', isProgressPage());
 
     if (isProgressPage()) {
+      // Clear cached progress so we always fetch fresh on navigation
+      progressData = null;
       waitForGridAndInject();
     } else {
       removeCard();
@@ -61,13 +64,19 @@
 
   function waitForGridAndInject() {
     // Already injected?
-    if (document.getElementById(CARD_ID)) return;
+    if (document.getElementById(CARD_ID)) {
+      console.log('[DS Enhancer] Card already exists, skipping inject');
+      return;
+    }
 
     const grid = findGridContainer();
     if (grid) {
+      console.log('[DS Enhancer] Grid found immediately, injecting');
       injectCard(grid);
       return;
     }
+
+    console.log('[DS Enhancer] Grid not ready, starting MutationObserver');
 
     // Grid not ready yet — observe DOM changes
     const observer = new MutationObserver(() => {
@@ -81,6 +90,7 @@
       }
       const g = findGridContainer();
       if (g) {
+        console.log('[DS Enhancer] Grid appeared, injecting');
         observer.disconnect();
         injectCard(g);
       }
@@ -89,11 +99,24 @@
     observer.observe(document.body, { childList: true, subtree: true });
 
     // Safety timeout — stop observing after 15s
-    setTimeout(() => observer.disconnect(), 15000);
+    setTimeout(() => {
+      observer.disconnect();
+      // One final attempt after timeout in case we missed it
+      if (!document.getElementById(CARD_ID) && isProgressPage()) {
+        const g = findGridContainer();
+        if (g) {
+          console.log('[DS Enhancer] Grid found on timeout retry, injecting');
+          injectCard(g);
+        } else {
+          console.warn('[DS Enhancer] Grid not found after 15s timeout');
+        }
+      }
+    }, 15000);
   }
 
   async function injectCard(gridContainer) {
     if (document.getElementById(CARD_ID)) return;
+    console.log('[DS Enhancer] injectCard — creating placeholder');
 
     // Create a placeholder card while loading
     const placeholder = document.createElement('div');
@@ -109,7 +132,9 @@
     gridContainer.appendChild(placeholder);
 
     // Fetch data
+    console.log('[DS Enhancer] injectCard — fetching data...');
     await fetchData();
+    console.log('[DS Enhancer] injectCard — fetch complete, has data:', !!progressData);
 
     // Replace placeholder with full card
     const existing = document.getElementById(CARD_ID);
@@ -232,6 +257,7 @@
   });
 
   // ---- Init ----
+  console.log('[DS Enhancer] Init — current path:', location.pathname, 'isProgress:', isProgressPage());
   patchHistory();
   onRouteChange();
 

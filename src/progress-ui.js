@@ -310,11 +310,11 @@ const ProgressUI = {
       .trim();
   },
 
-  /** Build a link to a DS video page. Tries slug first, falls back to ID. */
+  /** Build a link to a DS video page. */
   videoUrl(video) {
     const langPath = (location.pathname.split('/')[1]) || 'spanish';
-    const slug = video.slug || video.id;
-    return `/${langPath}/video/${slug}`;
+    const id = video.slug || video.id || '';
+    return `/${langPath}/video/${id}`;
   },
 
   formatCategoryPlural(name) {

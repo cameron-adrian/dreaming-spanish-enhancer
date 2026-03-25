@@ -205,7 +205,10 @@ const DSApi = {
 
       // Try to get partial progress from various possible API fields
       let progress = 0;
-      if (typeof watchInfo.progress === 'number') {
+      if (typeof watchInfo.watchPosition === 'number' && watchInfo.watchPosition > 0 && video.duration > 0) {
+        hasProgressField = true;
+        progress = watchInfo.watchPosition / video.duration;
+      } else if (typeof watchInfo.progress === 'number') {
         hasProgressField = true;
         progress = watchInfo.progress; // 0-1 or 0-100
         if (progress > 1) progress = progress / 100; // normalize to 0-1
@@ -223,7 +226,7 @@ const DSApi = {
       if (progress > 0 && progress < 1) {
         nearlyFinished.push({
           id: video._id,
-          slug: video.slug || video.path || '',
+          slug: video.slug || video.path || video._id || '',
           title: video.title || 'Untitled',
           guide: (video.guides || [])[0] || '',
           level: video.level || '',
@@ -281,7 +284,7 @@ const DSApi = {
           if (!isWatched) {
             unwatchedVideos.push({
               id: video._id,
-              slug: video.slug || video.path || '',
+              slug: video.slug || video.path || video._id || '',
               title: video.title || 'Untitled',
               duration: video.duration || 0,
               level: video.level || '',
