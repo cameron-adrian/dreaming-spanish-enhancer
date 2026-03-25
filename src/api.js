@@ -170,11 +170,21 @@ const DSApi = {
     const almostDone = this.computeAlmostDone(videos, watchedMap, categories, seriesMap);
 
     // Attach user stats for the popup
+    const fullyWatched = watchedVideos.filter(w => w.watched).length;
+    const partiallyWatched = watchedVideos.filter(w => !w.watched).length;
     categories._userStats = {
       totalWatchTimeHours: (user.watchTime || 0) / 3600,
       totalVideos: videos.length,
-      watchedVideos: watchedVideos.filter(w => w.watched).length,
+      watchedVideos: fullyWatched,
     };
+
+    // Log watched video count breakdown for debugging discrepancy
+    console.log(`[DS Enhancer] Watch count breakdown:`);
+    console.log(`  Total watch records from API: ${watchedVideos.length}`);
+    console.log(`  Fully watched (watched=true): ${fullyWatched}`);
+    console.log(`  Partially watched (watched=false): ${partiallyWatched}`);
+    console.log(`  User endpoint fields:`, Object.keys(user));
+    console.log(`  User endpoint data:`, JSON.stringify(user).slice(0, 500));
 
     // Attach almost-done data
     categories._almostDone = almostDone;
