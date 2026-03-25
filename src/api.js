@@ -82,6 +82,9 @@ const DSApi = {
       const sample = videos[0];
       console.log('[DS Enhancer] Sample video fields:', Object.keys(sample));
       console.log('[DS Enhancer] Sample video:', JSON.stringify(sample).slice(0, 500));
+      // Log all difficulty-related fields for debugging
+      const diffFields = Object.keys(sample).filter(k => /diff|score|rating|elo/i.test(k));
+      console.log('[DS Enhancer] Difficulty-related fields:', diffFields, diffFields.map(k => sample[k]));
     }
 
     // Build lookup: videoId → watched info
