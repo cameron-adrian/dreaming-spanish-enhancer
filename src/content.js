@@ -115,7 +115,7 @@
     const existing = document.getElementById(CARD_ID);
     if (!existing) return;
 
-    if (!progressData || Object.keys(progressData).filter(k => k !== '_userStats').length === 0) {
+    if (!progressData || Object.keys(progressData).filter(k => !k.startsWith('_')).length === 0) {
       existing.innerHTML = `
         <div class="ds-card-header">
           <h2 class="ds-card-title">Enhanced Statistics</h2>
@@ -163,7 +163,7 @@
       try {
         const cached = await sendMessage({ type: 'GET_PROGRESS' });
         if (cached.ok && cached.data &&
-            Object.keys(cached.data).filter(k => k !== '_userStats').length > 0) {
+            Object.keys(cached.data).filter(k => !k.startsWith('_')).length > 0) {
           progressData = cached.data;
           return;
         }

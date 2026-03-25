@@ -16,7 +16,7 @@ const ProgressUI = {
     const card = document.createElement('div');
     card.className = 'ds-card';
 
-    const categories = Object.keys(progressData).filter(k => k !== '_userStats');
+    const categories = Object.keys(progressData).filter(k => !k.startsWith('_'));
     if (categories.length === 0) {
       card.innerHTML = `
         <div class="ds-card-header">
@@ -28,14 +28,28 @@ const ProgressUI = {
 
     const overall = this.computeOverallStats(progressData);
 
-    const tabsHtml = categories.map((cat, i) =>
-      `<button class="ds-tab ${i === 0 ? 'ds-tab-active' : ''}" data-category="${cat}">${this.formatCategoryName(cat)}</button>`
-    ).join('');
+    const almostDone = progressData._almostDone;
+    const hasAlmostDone = almostDone && (
+      (almostDone.sectionCompleters && almostDone.sectionCompleters.length > 0) ||
+      (almostDone.nearlyFinished && almostDone.nearlyFinished.length > 0)
+    );
 
-    const sectionsHtml = categories.map((cat, i) => {
-      const summary = this.computeCategorySummary(progressData[cat]);
-      const remaining = summary.totalLabels - summary.completedLabels;
-      return `<div class="ds-tab-content ${i === 0 ? 'ds-tab-content-active' : ''}" data-category="${cat}">
+    const tabsHtml = (hasAlmostDone
+      ? `<button class="ds-tab ds-tab-active" data-category="_almostDone">Almost Done!</button>`
+      : '') +
+      categories.map((cat, i) =>
+        `<button class="ds-tab ${!hasAlmostDone && i === 0 ? 'ds-tab-active' : ''}" data-category="${cat}">${this.formatCategoryName(cat)}</button>`
+      ).join('');
+
+    const almostDoneHtml = hasAlmostDone ? this.buildAlmostDoneTab(almostDone) : '';
+
+    const sectionsHtml = (hasAlmostDone
+      ? `<div class="ds-tab-content ds-tab-content-active" data-category="_almostDone">${almostDoneHtml}</div>`
+      : '') +
+      categories.map((cat, i) => {
+        const summary = this.computeCategorySummary(progressData[cat]);
+        const remaining = summary.totalLabels - summary.completedLabels;
+        return `<div class="ds-tab-content ${!hasAlmostDone && i === 0 ? 'ds-tab-content-active' : ''}" data-category="${cat}">
         <div class="ds-category-summary">
           <span class="ds-category-summary-text">
             <span>${summary.completedLabels}</span> of ${summary.totalLabels} ${this.formatCategoryPlural(cat)} completed — ${summary.percent}% (${remaining} remaining)
@@ -46,7 +60,7 @@ const ProgressUI = {
         </div>
         ${this.buildCategorySection(cat, progressData[cat])}
       </div>`;
-    }).join('');
+      }).join('');
 
     card.innerHTML = `
       <div class="ds-card-header">
@@ -75,7 +89,7 @@ const ProgressUI = {
         <div class="ds-overall-bar" style="width: ${overall.percent}%"></div>
       </div>
       <div class="ds-tabs">${tabsHtml}</div>
-      <div class="ds-controls">
+      <div class="ds-controls"${hasAlmostDone ? ' style="display:none"' : ''}>
         <label>Sort:</label>
         <select class="ds-sort-select">
           <option value="name">Name</option>
@@ -103,7 +117,16 @@ const ProgressUI = {
         tab.classList.add('ds-tab-active');
         card.querySelector(`.ds-tab-content[data-category="${tab.dataset.category}"]`)
           .classList.add('ds-tab-content-active');
-        this.applyControls(card, progressData);
+
+        // Hide sort/filter controls on Almost Done tab
+        const controls = card.querySelector('.ds-controls');
+        if (controls) {
+          controls.style.display = tab.dataset.category === '_almostDone' ? 'none' : '';
+        }
+
+        if (tab.dataset.category !== '_almostDone') {
+          this.applyControls(card, progressData);
+        }
       });
     });
 
@@ -114,6 +137,31 @@ const ProgressUI = {
       this.applyControls(card, progressData));
     card.querySelector('.ds-hide-completed-cb').addEventListener('change', () =>
       this.applyControls(card, progressData));
+
+    // Wire up Almost Done sub-tabs
+    card.querySelectorAll('.ds-ad-subtab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const parent = btn.closest('.ds-tab-content');
+        parent.querySelectorAll('.ds-ad-subtab').forEach(b => b.classList.remove('ds-ad-subtab-active'));
+        parent.querySelectorAll('.ds-ad-view').forEach(v => v.classList.remove('ds-ad-view-active'));
+        btn.classList.add('ds-ad-subtab-active');
+        parent.querySelector(`.ds-ad-view[data-view="${btn.dataset.view}"]`)
+          ?.classList.add('ds-ad-view-active');
+      });
+    });
+
+    // Wire up Nearly Finished limit selector
+    const limitSelect = card.querySelector('.ds-ad-limit-select');
+    if (limitSelect) {
+      limitSelect.addEventListener('change', () => {
+        const limit = parseInt(limitSelect.value, 10);
+        const items = card.querySelectorAll('.ds-ad-nearly-item');
+        items.forEach(item => {
+          const idx = parseInt(item.dataset.index, 10);
+          item.classList.toggle('ds-ad-nearly-hidden', limit > 0 && idx >= limit);
+        });
+      });
+    }
 
     return card;
   },
@@ -136,7 +184,7 @@ const ProgressUI = {
       };
     }
 
-    const firstCat = Object.keys(progressData).filter(k => k !== '_userStats')[0];
+    const firstCat = Object.keys(progressData).filter(k => !k.startsWith('_'))[0];
     const labels = progressData[firstCat] || {};
     let totalHours = 0, watchedHours = 0, totalCount = 0, watchedCount = 0;
     for (const stats of Object.values(labels)) {
@@ -276,6 +324,96 @@ const ProgressUI = {
     if (singular === 'series') return 'series';
     if (singular.endsWith('s')) return singular;
     return singular + 's';
+  },
+
+  buildAlmostDoneTab(almostDone) {
+    const { sectionCompleters = [], nearlyFinished = [] } = almostDone;
+    let html = '';
+
+    // Sub-tab toggle between the two views
+    html += `<div class="ds-ad-subtabs">
+      <button class="ds-ad-subtab ds-ad-subtab-active" data-view="completers">Section Completers${sectionCompleters.length ? ` (${sectionCompleters.length})` : ''}</button>
+      <button class="ds-ad-subtab" data-view="nearly">Nearly Finished${nearlyFinished.length ? ` (${nearlyFinished.length})` : ''}</button>
+    </div>`;
+
+    // Section Completers view
+    html += `<div class="ds-ad-view ds-ad-view-active" data-view="completers">`;
+    if (sectionCompleters.length === 0) {
+      html += `<p class="ds-empty">No sections are close to completion yet. Keep watching!</p>`;
+    } else {
+      for (const section of sectionCompleters) {
+        const catLabel = this.formatCategoryName(section.category);
+        const barColor = this.getBarColor(section.percent);
+        html += `
+          <div class="ds-ad-section">
+            <div class="ds-ad-section-header">
+              <div class="ds-ad-section-info">
+                <span class="ds-ad-section-label">${this.escapeHtml(section.label)}</span>
+                <span class="ds-ad-section-cat">${catLabel}</span>
+              </div>
+              <span class="ds-ad-section-stats">${section.watchedVideos}/${section.totalVideos} videos — ${section.remaining} to go!</span>
+            </div>
+            <div class="ds-bar-wrap">
+              <div class="ds-bar" style="width: ${section.percent}%; background: ${barColor}"></div>
+              <span class="ds-bar-pct">${section.percent}%</span>
+            </div>
+            <div class="ds-ad-video-list">
+              ${section.videos.map(v => `
+                <div class="ds-ad-video-item">
+                  <span class="ds-ad-video-title">${this.escapeHtml(v.title)}</span>
+                  <span class="ds-ad-video-meta">${this.formatDuration(v.duration)}${v.level ? ' · ' + v.level : ''}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>`;
+      }
+    }
+    html += `</div>`;
+
+    // Nearly Finished view
+    html += `<div class="ds-ad-view" data-view="nearly">`;
+    if (nearlyFinished.length === 0) {
+      html += `<p class="ds-empty">No partially-watched videos found. The API may not expose in-video progress data.</p>`;
+    } else {
+      html += `<div class="ds-ad-limit-controls">
+        <label>Show:</label>
+        <select class="ds-ad-limit-select">
+          <option value="10" selected>Top 10</option>
+          <option value="20">Top 20</option>
+          <option value="50">Top 50</option>
+          <option value="0">All (${nearlyFinished.length})</option>
+        </select>
+      </div>`;
+      html += `<div class="ds-ad-nearly-list">`;
+      for (let i = 0; i < nearlyFinished.length; i++) {
+        const v = nearlyFinished[i];
+        const barColor = this.getBarColor(v.progress);
+        const hidden = i >= 10 ? ' ds-ad-nearly-hidden' : '';
+        html += `
+          <div class="ds-ad-nearly-item${hidden}" data-index="${i}">
+            <div class="ds-ad-nearly-header">
+              <span class="ds-ad-video-title">${this.escapeHtml(v.title)}</span>
+              <span class="ds-ad-video-meta">${this.formatDuration(v.remainingSeconds)} left${v.guide ? ' · ' + this.escapeHtml(v.guide) : ''}</span>
+            </div>
+            <div class="ds-bar-wrap">
+              <div class="ds-bar" style="width: ${v.progress}%; background: ${barColor}"></div>
+              <span class="ds-bar-pct">${v.progress}%</span>
+            </div>
+          </div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+
+    return html;
+  },
+
+  formatDuration(seconds) {
+    if (!seconds || seconds <= 0) return '0m';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.round((seconds % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
   },
 
   escapeHtml(str) {

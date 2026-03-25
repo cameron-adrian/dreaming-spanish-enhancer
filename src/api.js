@@ -154,6 +154,9 @@ const DSApi = {
     // Remove empty series category
     if (!hasAnySeries) delete categories.series;
 
+    // Build "Almost Done" data
+    const almostDone = this.computeAlmostDone(videos, watchedMap, categories, seriesMap);
+
     // Attach user stats for the popup
     categories._userStats = {
       totalWatchTimeHours: (user.watchTime || 0) / 3600,
@@ -161,10 +164,124 @@ const DSApi = {
       watchedVideos: watchedVideos.filter(w => w.watched).length,
     };
 
+    // Attach almost-done data
+    categories._almostDone = almostDone;
+
     const elapsed = Math.round(performance.now() - startTime);
     console.log(`[DS Enhancer] Progress computed in ${elapsed}ms — categories:`,
       Object.keys(categories).filter(k => k !== '_userStats'));
 
     return categories;
+  },
+
+  /**
+   * Compute "Almost Done" data:
+   * 1. sectionCompleters: sections with only a few unwatched videos left, plus those videos
+   * 2. nearlyFinished: partially-watched videos sorted by in-video progress (closest to 100%)
+   */
+  computeAlmostDone(videos, watchedMap, categories, seriesMap) {
+    // --- Nearly Finished: videos with partial progress ---
+    const nearlyFinished = [];
+    for (const video of videos) {
+      const watchInfo = watchedMap.get(video._id);
+      if (!watchInfo) continue;
+      if (watchInfo.watched === true) continue; // fully watched, skip
+
+      // Try to get partial progress from various possible API fields
+      let progress = 0;
+      if (typeof watchInfo.progress === 'number') {
+        progress = watchInfo.progress; // 0-1 or 0-100
+        if (progress > 1) progress = progress / 100; // normalize to 0-1
+      } else if (typeof watchInfo.currentTime === 'number' && video.duration > 0) {
+        progress = watchInfo.currentTime / video.duration;
+      } else if (typeof watchInfo.watchedTime === 'number' && video.duration > 0) {
+        progress = watchInfo.watchedTime / video.duration;
+      }
+
+      if (progress > 0 && progress < 1) {
+        nearlyFinished.push({
+          id: video._id,
+          title: video.title || 'Untitled',
+          guide: (video.guides || [])[0] || '',
+          level: video.level || '',
+          duration: video.duration || 0,
+          progress: Math.round(progress * 100),
+          remainingSeconds: Math.round((1 - progress) * (video.duration || 0)),
+        });
+      }
+    }
+    // Sort by progress descending (closest to 100% first)
+    nearlyFinished.sort((a, b) => b.progress - a.progress);
+
+    // --- Section Completers: categories where only 1-3 videos remain ---
+    const sectionCompleters = [];
+    const MAX_REMAINING = 3; // sections with at most this many unwatched videos
+
+    // Build a map of videos per category label for lookups
+    const catTypes = ['guide', 'level', 'topic'];
+    if (categories.series) catTypes.push('series');
+
+    for (const catType of catTypes) {
+      const labels = categories[catType];
+      if (!labels) continue;
+
+      for (const [label, stats] of Object.entries(labels)) {
+        const remaining = stats.count - stats.watchedCount;
+        if (remaining < 1 || remaining > MAX_REMAINING) continue;
+        // Already complete
+        if (stats.watched >= stats.total) continue;
+
+        // Find the actual unwatched videos for this label
+        const unwatchedVideos = [];
+        for (const video of videos) {
+          // Check if video belongs to this category label
+          let belongs = false;
+          if (catType === 'guide') {
+            belongs = (video.guides || []).includes(label);
+          } else if (catType === 'level') {
+            const lvl = (video.level || '').charAt(0).toUpperCase() + (video.level || '').slice(1);
+            belongs = lvl === label;
+          } else if (catType === 'topic') {
+            belongs = (video.tags || []).some(t => {
+              const tagLabel = t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, ' ');
+              return tagLabel === label;
+            });
+          } else if (catType === 'series') {
+            belongs = seriesMap.get(video.seriesId) === label;
+          }
+
+          if (!belongs) continue;
+
+          const watchInfo = watchedMap.get(video._id);
+          const isWatched = watchInfo?.watched === true;
+          if (!isWatched) {
+            unwatchedVideos.push({
+              id: video._id,
+              title: video.title || 'Untitled',
+              duration: video.duration || 0,
+              level: video.level || '',
+            });
+          }
+        }
+
+        if (unwatchedVideos.length > 0 && unwatchedVideos.length <= MAX_REMAINING) {
+          const pct = stats.total > 0 ? Math.round((stats.watched / stats.total) * 100) : 0;
+          sectionCompleters.push({
+            category: catType,
+            label,
+            totalVideos: stats.count,
+            watchedVideos: stats.watchedCount,
+            remaining: unwatchedVideos.length,
+            percent: pct,
+            videos: unwatchedVideos,
+          });
+        }
+      }
+    }
+
+    // Sort section completers: fewest remaining first, then highest % first
+    sectionCompleters.sort((a, b) => a.remaining - b.remaining || b.percent - a.percent);
+
+    return { sectionCompleters, nearlyFinished };
   }
 };
