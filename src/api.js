@@ -3,62 +3,33 @@
  * Handles authentication and data fetching from the DS API.
  */
 
-// Auto-detect the correct domain based on where we're running
 const DS_API = (typeof location !== 'undefined' && location.hostname === 'app.dreamingspanish.com')
   ? 'https://app.dreamingspanish.com/.netlify/functions'
   : 'https://app.dreaming.com/.netlify/functions';
 
-console.log('[DS Enhancer] API base URL:', DS_API);
-console.log('[DS Enhancer] Current hostname:', typeof location !== 'undefined' ? location.hostname : 'N/A');
-
 const DSApi = {
-  /**
-   * Get the bearer token from localStorage.
-   */
   getToken() {
-    // DS stores the JWT in localStorage under the key "token"
     const token = localStorage.getItem('token');
-    if (token) {
-      const cleaned = token.replace(/^["']|["']$/g, '');
-      console.log('[DS Enhancer] Found token under "token" key, length:', cleaned.length,
-        'preview:', cleaned.substring(0, 20) + '...');
-      return cleaned;
-    }
-
-    // Fallback: search for any JWT-looking value
-    console.log('[DS Enhancer] No "token" key found, scanning localStorage...');
-    console.log('[DS Enhancer] localStorage keys:', Array.from({ length: localStorage.length },
-      (_, i) => localStorage.key(i)));
+    if (token) return token.replace(/^["']|["']$/g, '');
 
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       const val = localStorage.getItem(key);
       if (val && val.startsWith('eyJ') && val.includes('.')) {
-        console.log('[DS Enhancer] Found JWT-like value under key:', key, 'length:', val.length);
         return val.replace(/^["']|["']$/g, '');
       }
     }
-
-    console.warn('[DS Enhancer] No auth token found in localStorage.');
     return null;
   },
 
-  /**
-   * Make an authenticated GET request to the DS API.
-   */
   async fetch(endpoint, params = {}) {
     const token = this.getToken();
-    if (!token) {
-      throw new Error('NOT_AUTHENTICATED');
-    }
+    if (!token) throw new Error('NOT_AUTHENTICATED');
 
     const url = new URL(`${DS_API}/${endpoint}`);
     for (const [key, val] of Object.entries(params)) {
       url.searchParams.set(key, val);
     }
-
-    console.log(`[DS Enhancer] Fetching: ${endpoint}`, url.toString());
-    const startTime = performance.now();
 
     let resp;
     try {
@@ -66,141 +37,269 @@ const DSApi = {
         headers: { 'Authorization': `Bearer ${token}` }
       });
     } catch (networkErr) {
-      console.error(`[DS Enhancer] Network error fetching ${endpoint}:`, networkErr);
       throw new Error(`NETWORK_ERROR: ${networkErr.message}`);
     }
 
-    const elapsed = Math.round(performance.now() - startTime);
-    console.log(`[DS Enhancer] ${endpoint} responded: ${resp.status} ${resp.statusText} (${elapsed}ms)`);
-
     if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      console.error(`[DS Enhancer] API error response body:`, body.substring(0, 500));
-
       if (resp.status === 401 || resp.status === 403) {
-        throw new Error(`AUTH_EXPIRED: ${resp.status} — Your session may have expired. Try logging in again.`);
+        throw new Error(`AUTH_EXPIRED: ${resp.status}`);
       }
       throw new Error(`API_ERROR: ${resp.status} ${resp.statusText}`);
     }
 
-    const data = await resp.json();
-    console.log(`[DS Enhancer] ${endpoint} response type:`, typeof data,
-      Array.isArray(data) ? `(array of ${data.length})` : `(keys: ${Object.keys(data || {}).join(', ')})`);
-
-    return data;
+    return resp.json();
   },
 
   /**
-   * Try fetching an endpoint, returning null on error instead of throwing.
+   * Fetch the full video catalog and watch history, then compute progress
+   * grouped by guide, level, topic, and series.
    */
-  async tryFetch(endpoint, params = {}) {
-    try {
-      return await this.fetch(endpoint, params);
-    } catch (e) {
-      console.log(`[DS Enhancer] Probe ${endpoint}: ${e.message}`);
-      return null;
-    }
-  },
-
-  /**
-   * Discover the correct API endpoints by probing common names.
-   * Logs all results so we can figure out the real data structure.
-   */
-  async discoverEndpoints(language = 'es') {
-    console.log('[DS Enhancer] ========== ENDPOINT DISCOVERY ==========');
-
-    // Endpoints to try for video catalog
-    const catalogEndpoints = [
-      ['videos', { language }],
-      ['video', { language }],
-      ['content', { language }],
-      ['contents', { language }],
-      ['series', { language }],
-      ['catalog', { language }],
-      ['browse', { language }],
-      ['search', { language }],
-      ['feed', { language }],
-      ['lessons', { language }],
-      ['library', { language }],
-      ['allVideos', { language }],
-      ['getAllVideos', { language }],
-      ['getVideos', { language }],
-      ['videoList', { language }],
-    ];
-
-    // Endpoints to try for watch history
-    const historyEndpoints = [
-      ['watchedVideo', { language }],
-      ['watched', { language }],
-      ['history', { language }],
-      ['watchHistory', { language }],
-      ['progress', { language }],
-      ['userProgress', { language }],
-      ['stats', { language }],
-      ['user', { timezone: '0' }],
-    ];
-
-    // Also try playlist with no params
-    const playlistNoParams = await this.tryFetch('playlist');
-    console.log('[DS Enhancer] playlist (no params):', playlistNoParams ?
-      (Array.isArray(playlistNoParams) ? `array[${playlistNoParams.length}]` : `object{${Object.keys(playlistNoParams).join(', ')}}`) : 'FAILED');
-
-    // Probe catalog endpoints in parallel
-    console.log('[DS Enhancer] ---- Probing catalog endpoints ----');
-    const catalogResults = await Promise.all(
-      catalogEndpoints.map(async ([name, params]) => {
-        const data = await this.tryFetch(name, params);
-        return [name, data];
-      })
-    );
-
-    for (const [name, data] of catalogResults) {
-      if (!data) continue;
-      const shape = Array.isArray(data) ? `array[${data.length}]` : `object{${Object.keys(data).join(', ')}}`;
-      console.log(`[DS Enhancer] ✓ ${name}: ${shape}`);
-
-      // If it's an array with objects that have video-like fields, log a sample
-      const items = Array.isArray(data) ? data : (data.videos || data.items || data.results || data.content || []);
-      if (items.length > 0) {
-        console.log(`[DS Enhancer]   Sample from ${name}:`, JSON.stringify(items[0], null, 2).substring(0, 1500));
-        console.log(`[DS Enhancer]   Fields:`, Object.keys(items[0]));
-      }
-    }
-
-    // Probe history endpoints in parallel
-    console.log('[DS Enhancer] ---- Probing history/progress endpoints ----');
-    const historyResults = await Promise.all(
-      historyEndpoints.map(async ([name, params]) => {
-        const data = await this.tryFetch(name, params);
-        return [name, data];
-      })
-    );
-
-    for (const [name, data] of historyResults) {
-      if (!data) continue;
-      const shape = Array.isArray(data) ? `array[${data.length}]` : `object{${Object.keys(data).join(', ')}}`;
-      console.log(`[DS Enhancer] ✓ ${name}: ${shape}`);
-
-      const items = Array.isArray(data) ? data : [];
-      if (items.length > 0) {
-        console.log(`[DS Enhancer]   Sample from ${name}:`, JSON.stringify(items[0], null, 2).substring(0, 1500));
-        console.log(`[DS Enhancer]   Fields:`, Object.keys(items[0]));
-      } else if (!Array.isArray(data)) {
-        // It's an object — log it directly (user profile, etc.)
-        console.log(`[DS Enhancer]   ${name} data:`, JSON.stringify(data, null, 2).substring(0, 2000));
-      }
-    }
-
-    console.log('[DS Enhancer] ========== DISCOVERY COMPLETE ==========');
-    return { catalogResults, historyResults };
-  },
-
   async computeProgress(language = 'es') {
-    // Run endpoint discovery to find the right data
-    await this.discoverEndpoints(language);
+    console.log('[DS Enhancer] Fetching catalog and watch history...');
+    const startTime = performance.now();
 
-    // For now, return empty — once we know the right endpoints, we'll build the real logic
-    console.log('[DS Enhancer] computeProgress: returning empty pending endpoint discovery results.');
-    return {};
+    const [videosResp, watchedResp, userResp, seriesResp] = await Promise.all([
+      this.fetch('videos', { language }),
+      this.fetch('watchedVideo', { language }),
+      this.fetch('user', { timezone: '0' }).catch(() => null),
+      this.fetch('series', { language }).catch(() => null),
+    ]);
+
+    if (!videosResp || !watchedResp) {
+      throw new Error('Failed to fetch video catalog or watch history');
+    }
+
+    const videos = videosResp.videos || [];
+    const watchedVideos = watchedResp.watchedVideos || [];
+    const user = userResp?.user || {};
+    const seriesList = seriesResp?.series || [];
+
+    console.log(`[DS Enhancer] Catalog: ${videos.length} videos, ${watchedVideos.length} watch records`);
+
+    // Build lookup: videoId → watched info
+    const watchedMap = new Map();
+    for (const w of watchedVideos) {
+      watchedMap.set(w.videoId, w);
+    }
+
+    // Build series name lookup
+    const seriesMap = new Map();
+    for (const s of seriesList) {
+      seriesMap.set(s._id || s.id, s.title || s.name || 'Unknown Series');
+    }
+
+    // Categories to group by
+    const categories = {
+      guide: {},
+      level: {},
+      topic: {},
+    };
+
+    // Only add series tab if videos actually use series
+    let hasAnySeries = false;
+
+    for (const video of videos) {
+      const durationHours = (video.duration || 0) / 3600;
+      const watchInfo = watchedMap.get(video._id);
+      const isWatched = watchInfo?.watched === true;
+      const watchedHours = isWatched ? durationHours : 0;
+
+      // Group by guide(s)
+      const guides = video.guides || [];
+      for (const guide of guides) {
+        if (!categories.guide[guide]) {
+          categories.guide[guide] = { total: 0, watched: 0, count: 0, watchedCount: 0 };
+        }
+        categories.guide[guide].total += durationHours;
+        categories.guide[guide].watched += watchedHours;
+        categories.guide[guide].count += 1;
+        categories.guide[guide].watchedCount += isWatched ? 1 : 0;
+      }
+
+      // Group by level
+      const level = video.level || 'unknown';
+      const levelLabel = level.charAt(0).toUpperCase() + level.slice(1);
+      if (!categories.level[levelLabel]) {
+        categories.level[levelLabel] = { total: 0, watched: 0, count: 0, watchedCount: 0 };
+      }
+      categories.level[levelLabel].total += durationHours;
+      categories.level[levelLabel].watched += watchedHours;
+      categories.level[levelLabel].count += 1;
+      categories.level[levelLabel].watchedCount += isWatched ? 1 : 0;
+
+      // Group by topic/tag
+      const tags = video.tags || [];
+      for (const tag of tags) {
+        const tagLabel = tag.charAt(0).toUpperCase() + tag.slice(1).replace(/-/g, ' ');
+        if (!categories.topic[tagLabel]) {
+          categories.topic[tagLabel] = { total: 0, watched: 0, count: 0, watchedCount: 0 };
+        }
+        categories.topic[tagLabel].total += durationHours;
+        categories.topic[tagLabel].watched += watchedHours;
+        categories.topic[tagLabel].count += 1;
+        categories.topic[tagLabel].watchedCount += isWatched ? 1 : 0;
+      }
+
+      // Group by series (if applicable)
+      if (video.seriesId) {
+        hasAnySeries = true;
+        const seriesName = seriesMap.get(video.seriesId) || 'Unknown Series';
+        if (!categories.series) categories.series = {};
+        if (!categories.series[seriesName]) {
+          categories.series[seriesName] = { total: 0, watched: 0, count: 0, watchedCount: 0 };
+        }
+        categories.series[seriesName].total += durationHours;
+        categories.series[seriesName].watched += watchedHours;
+        categories.series[seriesName].count += 1;
+        categories.series[seriesName].watchedCount += isWatched ? 1 : 0;
+      }
+    }
+
+    // Remove empty series category
+    if (!hasAnySeries) delete categories.series;
+
+    // Build "Almost Done" data
+    const almostDone = this.computeAlmostDone(videos, watchedMap, categories, seriesMap);
+
+    // Attach user stats for the popup
+    const fullyWatched = watchedVideos.filter(w => w.watched).length;
+    categories._userStats = {
+      totalWatchTimeHours: (user.watchTime || 0) / 3600,
+      totalVideos: videos.length,
+      watchedVideos: fullyWatched,
+    };
+
+    // Attach almost-done data
+    categories._almostDone = almostDone;
+
+    const elapsed = Math.round(performance.now() - startTime);
+    console.log(`[DS Enhancer] Progress computed in ${elapsed}ms — categories:`,
+      Object.keys(categories).filter(k => k !== '_userStats'));
+
+    return categories;
+  },
+
+  /**
+   * Compute "Almost Done" data:
+   * 1. sectionCompleters: sections with only a few unwatched videos left, plus those videos
+   * 2. nearlyFinished: partially-watched videos sorted by in-video progress (closest to 100%)
+   */
+  computeAlmostDone(videos, watchedMap, categories, seriesMap) {
+    // --- Nearly Finished: videos with partial progress ---
+    const nearlyFinished = [];
+    for (const video of videos) {
+      const watchInfo = watchedMap.get(video._id);
+      if (!watchInfo) continue;
+      if (watchInfo.watched === true) continue; // fully watched, skip
+
+      // Try to get partial progress from various possible API fields
+      let progress = 0;
+      if (typeof watchInfo.watchPosition === 'number' && watchInfo.watchPosition > 0 && video.duration > 0) {
+
+        progress = watchInfo.watchPosition / video.duration;
+      } else if (typeof watchInfo.progress === 'number') {
+
+        progress = watchInfo.progress; // 0-1 or 0-100
+        if (progress > 1) progress = progress / 100; // normalize to 0-1
+      } else if (typeof watchInfo.currentTime === 'number' && video.duration > 0) {
+
+        progress = watchInfo.currentTime / video.duration;
+      } else if (typeof watchInfo.watchedTime === 'number' && video.duration > 0) {
+
+        progress = watchInfo.watchedTime / video.duration;
+      } else if (typeof watchInfo.secondsWatched === 'number' && video.duration > 0) {
+
+        progress = watchInfo.secondsWatched / video.duration;
+      }
+
+      if (progress > 0 && progress < 1) {
+        nearlyFinished.push({
+          id: video._id,
+          slug: video.slug || video.path || video._id || '',
+          title: video.title || 'Untitled',
+          guide: (video.guides || [])[0] || '',
+          level: video.level || '',
+          difficultyScore: video.difficultyScore || 0,
+          duration: video.duration || 0,
+          progress: Math.round(progress * 100),
+          remainingSeconds: Math.round((1 - progress) * (video.duration || 0)),
+        });
+      }
+    }
+    // Sort by progress descending (closest to 100% first)
+    nearlyFinished.sort((a, b) => b.progress - a.progress);
+
+    // --- Section Completers: categories where only 1-3 videos remain ---
+    const sectionCompleters = [];
+    const MAX_REMAINING = 3; // sections with at most this many unwatched videos
+
+    // Build a map of videos per category label for lookups
+    const catTypes = ['guide', 'level', 'topic'];
+    if (categories.series) catTypes.push('series');
+
+    for (const catType of catTypes) {
+      const labels = categories[catType];
+      if (!labels) continue;
+
+      for (const [label, stats] of Object.entries(labels)) {
+        const remaining = stats.count - stats.watchedCount;
+        if (remaining < 1 || remaining > MAX_REMAINING) continue;
+        // Already complete
+        if (stats.watched >= stats.total) continue;
+
+        // Find the actual unwatched videos for this label
+        const unwatchedVideos = [];
+        for (const video of videos) {
+          // Check if video belongs to this category label
+          let belongs = false;
+          if (catType === 'guide') {
+            belongs = (video.guides || []).includes(label);
+          } else if (catType === 'level') {
+            const lvl = (video.level || '').charAt(0).toUpperCase() + (video.level || '').slice(1);
+            belongs = lvl === label;
+          } else if (catType === 'topic') {
+            belongs = (video.tags || []).some(t => {
+              const tagLabel = t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, ' ');
+              return tagLabel === label;
+            });
+          } else if (catType === 'series') {
+            belongs = seriesMap.get(video.seriesId) === label;
+          }
+
+          if (!belongs) continue;
+
+          const watchInfo = watchedMap.get(video._id);
+          const isWatched = watchInfo?.watched === true;
+          if (!isWatched) {
+            unwatchedVideos.push({
+              id: video._id,
+              slug: video.slug || video.path || video._id || '',
+              title: video.title || 'Untitled',
+              duration: video.duration || 0,
+              level: video.level || '',
+              difficultyScore: video.difficultyScore || 0,
+            });
+          }
+        }
+
+        if (unwatchedVideos.length > 0 && unwatchedVideos.length <= MAX_REMAINING) {
+          const pct = stats.total > 0 ? Math.round((stats.watched / stats.total) * 100) : 0;
+          sectionCompleters.push({
+            category: catType,
+            label,
+            totalVideos: stats.count,
+            watchedVideos: stats.watchedCount,
+            remaining: unwatchedVideos.length,
+            percent: pct,
+            videos: unwatchedVideos,
+          });
+        }
+      }
+    }
+
+    // Sort section completers: fewest remaining first, then highest % first
+    sectionCompleters.sort((a, b) => a.remaining - b.remaining || b.percent - a.percent);
+
+    return { sectionCompleters, nearlyFinished };
   }
 };

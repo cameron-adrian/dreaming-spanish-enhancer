@@ -23,19 +23,18 @@ async function init() {
 }
 
 function showStats(progressData, timestamp) {
-  const firstCat = Object.keys(progressData)[0];
-  const labels = progressData[firstCat];
-  let totalHours = 0, watchedHours = 0, totalCount = 0, watchedCount = 0;
-
-  for (const stats of Object.values(labels)) {
+  const userStats = progressData._userStats;
+  const levelLabels = progressData.level || {};
+  let totalHours = 0, watchedHours = 0;
+  for (const stats of Object.values(levelLabels)) {
     totalHours += stats.total;
     watchedHours += stats.watched;
-    totalCount += stats.count;
-    watchedCount += stats.watchedCount;
   }
 
+  const totalCount = userStats?.totalVideos || 0;
+  const watchedCount = userStats?.watchedVideos || 0;
   const percent = totalHours > 0 ? Math.round((watchedHours / totalHours) * 100) : 0;
-  const categories = Object.keys(progressData).length;
+  const categories = Object.keys(progressData).filter(k => k !== '_userStats').length;
   const age = timestamp ? timeSince(timestamp) : 'unknown';
 
   contentEl.innerHTML = `
@@ -64,7 +63,7 @@ function showStats(progressData, timestamp) {
       <div class="progress-bar-fill" style="width: ${percent}%"></div>
     </div>
     <div class="actions">
-      <button class="primary" id="open-panel">Open Full Panel</button>
+      <button class="primary" id="open-panel">View Progress Page</button>
       <button id="refresh">Refresh</button>
     </div>
   `;
@@ -72,11 +71,10 @@ function showStats(progressData, timestamp) {
   document.getElementById('open-panel').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.url && tab.url.includes('dreaming')) {
-      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_PANEL' });
+      chrome.tabs.sendMessage(tab.id, { type: 'OPEN_PROGRESS' });
       window.close();
     } else {
-      // Open DS in a new tab
-      chrome.tabs.create({ url: 'https://app.dreaming.com' });
+      chrome.tabs.create({ url: 'https://app.dreaming.com/spanish/progress' });
     }
   });
 
@@ -108,7 +106,7 @@ function showNoData() {
   `;
 
   document.getElementById('open-ds').addEventListener('click', () => {
-    chrome.tabs.create({ url: 'https://app.dreaming.com' });
+    chrome.tabs.create({ url: 'https://app.dreaming.com/spanish/progress' });
   });
 }
 
