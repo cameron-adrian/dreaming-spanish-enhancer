@@ -310,11 +310,20 @@ const ProgressUI = {
       .trim();
   },
 
+  /** Build an inline level badge matching DS styling. */
+  levelBadge(level) {
+    if (!level) return '';
+    const label = level.charAt(0).toUpperCase() + level.slice(1);
+    const color = this.levelColors[label];
+    if (!color) return `<span class="ds-ad-level-tag">${this.escapeHtml(label)}</span>`;
+    return `<span class="ds-level-badge ds-level-badge-sm" style="background: ${color}1a; color: ${color}; border: 1px solid ${color}40;">${this.escapeHtml(label)}</span>`;
+  },
+
   /** Build a link to a DS video page. */
   videoUrl(video) {
     const langPath = (location.pathname.split('/')[1]) || 'spanish';
-    const id = video.slug || video.id || '';
-    return `/${langPath}/video/${id}`;
+    const id = video.id || '';
+    return `/${langPath}/watch?id=${id}`;
   },
 
   formatCategoryPlural(name) {
@@ -359,7 +368,7 @@ const ProgressUI = {
               ${section.videos.map(v => `
                 <a class="ds-ad-video-item" href="${this.videoUrl(v)}" target="_blank">
                   <span class="ds-ad-video-title">${this.escapeHtml(v.title)}</span>
-                  <span class="ds-ad-video-meta">${this.formatDuration(v.duration)}${v.level ? ' · ' + v.level : ''}</span>
+                  <span class="ds-ad-video-meta">${this.levelBadge(v.level)} ${this.formatDuration(v.duration)}</span>
                 </a>
               `).join('')}
             </div>
@@ -391,7 +400,7 @@ const ProgressUI = {
           <div class="ds-ad-nearly-item${hidden}" data-index="${i}">
             <a class="ds-ad-nearly-header" href="${this.videoUrl(v)}" target="_blank">
               <span class="ds-ad-video-title">${this.escapeHtml(v.title)}</span>
-              <span class="ds-ad-video-meta">${this.formatDuration(v.remainingSeconds)} left${v.guide ? ' · ' + this.escapeHtml(v.guide) : ''}</span>
+              <span class="ds-ad-video-meta">${this.levelBadge(v.level)} ${this.formatDuration(v.remainingSeconds)} left${v.guide ? ' · ' + this.escapeHtml(v.guide) : ''}</span>
             </a>
             <div class="ds-bar-wrap">
               <div class="ds-bar" style="width: ${v.progress}%; background: ${barColor}"></div>
