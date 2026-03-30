@@ -141,42 +141,41 @@
 
     // Replace placeholder with full card
     const existing = document.getElementById(CARD_ID);
-    if (!existing) return;
+    if (existing) {
+      if (!progressData || Object.keys(progressData).filter(k => !k.startsWith('_')).length === 0) {
+        existing.innerHTML = `
+          <div class="ds-card-header">
+            <h2 class="ds-card-title">Enhanced Statistics</h2>
+          </div>
+          <div class="ds-card-loading">No progress data available. Watch some videos first!</div>
+        `;
+      } else {
+        const card = ProgressUI.createCard(progressData);
+        card.id = CARD_ID;
+        if (isDarkMode()) card.classList.add('ds-dark');
+        existing.replaceWith(card);
 
-    if (!progressData || Object.keys(progressData).filter(k => !k.startsWith('_')).length === 0) {
-      existing.innerHTML = `
-        <div class="ds-card-header">
-          <h2 class="ds-card-title">Enhanced Statistics</h2>
-        </div>
-        <div class="ds-card-loading">No progress data available. Watch some videos first!</div>
-      `;
-      return;
+        // Wire refresh
+        function handleRefresh() {
+          (async () => {
+            const current = document.getElementById(CARD_ID);
+            if (!current) return;
+            await sendMessage({ type: 'CLEAR_CACHE' });
+            current.querySelector('.ds-card-body-inner').innerHTML =
+              '<div class="ds-card-loading">Refreshing...</div>';
+            await fetchData();
+            const fresh = ProgressUI.createCard(progressData);
+            fresh.id = CARD_ID;
+            if (isDarkMode()) fresh.classList.add('ds-dark');
+            current.replaceWith(fresh);
+            fresh.querySelector('.ds-card-refresh')?.addEventListener('click', handleRefresh);
+          })();
+        }
+        card.querySelector('.ds-card-refresh')?.addEventListener('click', handleRefresh);
+      }
     }
 
-    const card = ProgressUI.createCard(progressData);
-    card.id = CARD_ID;
-    if (isDarkMode()) card.classList.add('ds-dark');
-    existing.replaceWith(card);
-
-    // Wire refresh
-    function handleRefresh() {
-      (async () => {
-        const current = document.getElementById(CARD_ID);
-        if (!current) return;
-        await sendMessage({ type: 'CLEAR_CACHE' });
-        current.querySelector('.ds-card-body-inner').innerHTML =
-          '<div class="ds-card-loading">Refreshing...</div>';
-        await fetchData();
-        const fresh = ProgressUI.createCard(progressData);
-        fresh.id = CARD_ID;
-        if (isDarkMode()) fresh.classList.add('ds-dark');
-        current.replaceWith(fresh);
-        fresh.querySelector('.ds-card-refresh')?.addEventListener('click', handleRefresh);
-      })();
-    }
-    card.querySelector('.ds-card-refresh')?.addEventListener('click', handleRefresh);
-
-    // Inject Book Tracker card below Enhanced Statistics
+    // Always inject Book Tracker card, regardless of stats card outcome
     injectBookCard(gridContainer);
   }
 
