@@ -7,6 +7,7 @@
   'use strict';
 
   const CARD_ID = 'ds-enhancer-card';
+  const BOOK_CARD_ID = 'ds-book-tracker-card';
   let progressData = null;
   let isLoading = false;
   let lastPath = null;
@@ -174,11 +175,26 @@
       })();
     }
     card.querySelector('.ds-card-refresh')?.addEventListener('click', handleRefresh);
+
+    // Inject Book Tracker card below Enhanced Statistics
+    injectBookCard(gridContainer);
+  }
+
+  async function injectBookCard(gridContainer) {
+    if (document.getElementById(BOOK_CARD_ID)) return;
+    console.log('[DS Enhancer] injectBookCard — creating book tracker card');
+
+    const books = await BookTrackerUI.loadBooks();
+    const bookCard = BookTrackerUI.createCard(books, isDarkMode());
+    bookCard.id = BOOK_CARD_ID;
+    gridContainer.appendChild(bookCard);
   }
 
   function removeCard() {
     const card = document.getElementById(CARD_ID);
     if (card) card.remove();
+    const bookCard = document.getElementById(BOOK_CARD_ID);
+    if (bookCard) bookCard.remove();
   }
 
   // ---- Data Fetching ----
