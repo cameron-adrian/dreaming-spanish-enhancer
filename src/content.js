@@ -249,8 +249,12 @@
 
   function sendMessage(msg) {
     return new Promise((resolve, reject) => {
+      if (!chrome.runtime?.sendMessage) {
+        reject(new Error('Extension context invalidated'));
+        return;
+      }
       chrome.runtime.sendMessage(msg, (response) => {
-        if (chrome.runtime.lastError) {
+        if (chrome.runtime?.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
         } else {
           resolve(response || {});
