@@ -551,3 +551,291 @@
 .ds-ad-video-title:hover {
   color: var(--ds-secondary);
 }
+
+/* ======================================================
+   Book Tracker Card
+   ====================================================== */
+
+/* Add Book button in card header */
+.ds-book-add-btn {
+  background: var(--ds-secondary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.ds-book-add-btn:hover {
+  opacity: 0.85;
+}
+
+/* ---- Add Book Form ---- */
+.ds-book-form-wrap {
+  border: 1px solid var(--ds-border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: var(--ds-bg-base);
+}
+
+.ds-book-form-hidden {
+  display: none;
+}
+
+.ds-book-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ds-book-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ds-book-form-row-half {
+  flex-direction: row;
+  gap: 12px;
+}
+
+.ds-book-form-row-half .ds-book-form-field {
+  flex: 1;
+}
+
+.ds-book-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ds-book-form-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.ds-book-required {
+  color: var(--ds-error);
+}
+
+.ds-book-isbn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.ds-book-input {
+  background: var(--ds-bg);
+  color: var(--ds-text);
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.ds-book-input:focus {
+  outline: none;
+  border-color: var(--ds-secondary);
+}
+
+.ds-book-input-error {
+  border-color: var(--ds-error) !important;
+}
+
+.ds-book-isbn-input {
+  flex: 1;
+}
+
+.ds-book-lookup-btn {
+  background: var(--ds-bg-input);
+  color: var(--ds-text);
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.ds-book-lookup-btn:hover:not(:disabled) {
+  background: var(--ds-bg-hover);
+  border-color: var(--ds-secondary);
+}
+
+.ds-book-lookup-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ds-book-lookup-status {
+  font-size: 12px;
+  min-height: 16px;
+  padding: 0 2px;
+}
+
+.ds-book-lookup-loading {
+  color: var(--ds-text-muted);
+}
+
+.ds-book-lookup-success {
+  color: #28a745;
+}
+
+.ds-book-lookup-error {
+  color: var(--ds-error);
+}
+
+.ds-book-est-words {
+  font-size: 12px;
+  color: var(--ds-text-secondary);
+  padding: 2px 0;
+}
+
+.ds-book-est-value {
+  color: var(--ds-text);
+}
+
+.ds-book-est-note {
+  color: var(--ds-text-muted);
+  font-size: 11px;
+}
+
+.ds-book-form-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.ds-book-submit-btn {
+  background: var(--ds-secondary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.ds-book-submit-btn:hover {
+  opacity: 0.85;
+}
+
+.ds-book-cancel-btn {
+  background: var(--ds-bg-input);
+  color: var(--ds-text-secondary);
+  border: 1px solid var(--ds-border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ds-book-cancel-btn:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text);
+}
+
+/* ---- Book List ---- */
+.ds-book-list {
+  margin-top: 4px;
+}
+
+.ds-book-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ds-border-light);
+  gap: 12px;
+}
+
+.ds-book-row:last-child {
+  border-bottom: none;
+}
+
+.ds-book-row:hover {
+  background: var(--ds-bg-hover);
+  margin: 0 -8px;
+  padding: 10px 8px;
+  border-radius: 6px;
+}
+
+.ds-book-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ds-book-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ds-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-book-row-author {
+  font-size: 12px;
+  color: var(--ds-text-secondary);
+}
+
+.ds-book-row-isbn {
+  font-size: 11px;
+  color: var(--ds-text-muted);
+}
+
+.ds-book-row-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.ds-book-row-words {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ds-primary);
+  white-space: nowrap;
+}
+
+.ds-book-row-pages {
+  font-size: 11px;
+  color: var(--ds-text-muted);
+  white-space: nowrap;
+}
+
+.ds-book-delete-btn {
+  background: none;
+  border: none;
+  color: var(--ds-text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  margin-top: 2px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.ds-book-delete-btn:hover {
+  color: var(--ds-error);
+  background: rgba(255, 98, 117, 0.1);
+}
