@@ -66,16 +66,19 @@
   }
 
   function waitForGridAndInject() {
-    // Already injected?
-    if (document.getElementById(CARD_ID)) {
-      console.log('[DS Enhancer] Card already exists, skipping inject');
+    // Already injected both?
+    const hasStats = !!document.getElementById(CARD_ID);
+    const hasBook = !!document.getElementById(BOOK_CARD_ID);
+    if (hasStats && hasBook) {
+      console.log('[DS Enhancer] Both cards already exist, skipping inject');
       return;
     }
 
     const grid = findGridContainer();
     if (grid) {
       console.log('[DS Enhancer] Grid found immediately, injecting');
-      injectCard(grid);
+      if (!hasStats) injectCard(grid);
+      if (!hasBook) injectBookCard(grid);
       return;
     }
 
@@ -87,7 +90,9 @@
         observer.disconnect();
         return;
       }
-      if (document.getElementById(CARD_ID)) {
+      const statsExists = !!document.getElementById(CARD_ID);
+      const bookExists = !!document.getElementById(BOOK_CARD_ID);
+      if (statsExists && bookExists) {
         observer.disconnect();
         return;
       }
@@ -95,7 +100,8 @@
       if (g) {
         console.log('[DS Enhancer] Grid appeared, injecting');
         observer.disconnect();
-        injectCard(g);
+        if (!statsExists) injectCard(g);
+        if (!bookExists) injectBookCard(g);
       }
     });
 
@@ -105,11 +111,14 @@
     setTimeout(() => {
       observer.disconnect();
       // One final attempt after timeout in case we missed it
-      if (!document.getElementById(CARD_ID) && isProgressPage()) {
+      const statsExists = !!document.getElementById(CARD_ID);
+      const bookExists = !!document.getElementById(BOOK_CARD_ID);
+      if ((!statsExists || !bookExists) && isProgressPage()) {
         const g = findGridContainer();
         if (g) {
           console.log('[DS Enhancer] Grid found on timeout retry, injecting');
-          injectCard(g);
+          if (!statsExists) injectCard(g);
+          if (!bookExists) injectBookCard(g);
         } else {
           console.warn('[DS Enhancer] Grid not found after 15s timeout');
         }
@@ -175,18 +184,33 @@
       }
     }
 
-    // Always inject Book Tracker card, regardless of stats card outcome
-    injectBookCard(gridContainer);
   }
 
   async function injectBookCard(gridContainer) {
     if (document.getElementById(BOOK_CARD_ID)) return;
     console.log('[DS Enhancer] injectBookCard — creating book tracker card');
 
-    const books = await BookTrackerUI.loadBooks();
-    const bookCard = BookTrackerUI.createCard(books, isDarkMode());
-    bookCard.id = BOOK_CARD_ID;
-    gridContainer.appendChild(bookCard);
+    const liveGrid = findGridContainer() || gridContainer;
+    if (!document.contains(liveGrid)) {
+      console.warn('[DS Enhancer] injectBookCard — grid container not in document, skipping');
+      return;
+    }
+
+    try {
+      const books = await BookTrackerUI.loadBooks();
+      console.log('[DS Enhancer] injectBookCard — books loaded:', books?.length ?? 0);
+      const bookCard = BookTrackerUI.createCard(books, isDarkMode());
+      bookCard.id = BOOK_CARD_ID;
+      const currentGrid = findGridContainer() || liveGrid;
+      if (!document.contains(currentGrid)) {
+        console.warn('[DS Enhancer] injectBookCard — grid container detached after async load, skipping');
+        return;
+      }
+      currentGrid.appendChild(bookCard);
+      console.log('[DS Enhancer] injectBookCard — book tracker card injected');
+    } catch (err) {
+      console.error('[DS Enhancer] injectBookCard — failed to load or render book tracker:', err);
+    }
   }
 
   function removeCard() {
