@@ -302,18 +302,14 @@
   // ---- 3-Dots Menu Observer ----
 
   function initMenuObserver() {
-    // Capture the card that was clicked so portal-rendered menus can be linked back to it
+    // Capture the card that was clicked so portal-rendered menus can be linked back to it.
+    // We track any mousedown inside a video card so we don't depend on specific button
+    // selectors that may not match the DS site's actual markup.
     document.addEventListener('mousedown', e => {
-      const btn = e.target.closest(
-        '[data-testid="video-options-toggle"], [data-testid="video-options-toggle-mobile"],' +
-        '[class*="video-options__toggle"], [class*="video-options-toggle"],' +
-        '[aria-label*="options" i], [aria-label*="more" i]'
+      const card = e.target.closest(
+        '.ds-catalog-video-card, [class*="catalog-video-card"], [class*="video-card"]'
       );
-      if (btn) {
-        _lastClickedCard = btn.closest(
-          '.ds-catalog-video-card, [class*="catalog-video-card"], [class*="video-card"]'
-        );
-      }
+      if (card) _lastClickedCard = card;
     });
 
     menuObserver = new MutationObserver(mutations => {
