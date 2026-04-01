@@ -65,11 +65,21 @@
     return null;
   }
 
+  function missingCards() {
+    return {
+      stats: !document.getElementById(CARD_ID),
+      book: !document.getElementById(BOOK_CARD_ID),
+    };
+  }
+
+  function injectMissingCards(grid, missing) {
+    if (missing.stats) injectCard(grid);
+    if (missing.book) injectBookCard(grid);
+  }
+
   function waitForGridAndInject() {
-    // Already injected both?
-    const hasStats = !!document.getElementById(CARD_ID);
-    const hasBook = !!document.getElementById(BOOK_CARD_ID);
-    if (hasStats && hasBook) {
+    const missing = missingCards();
+    if (!missing.stats && !missing.book) {
       console.log('[DS Enhancer] Both cards already exist, skipping inject');
       return;
     }
@@ -77,22 +87,19 @@
     const grid = findGridContainer();
     if (grid) {
       console.log('[DS Enhancer] Grid found immediately, injecting');
-      if (!hasStats) injectCard(grid);
-      if (!hasBook) injectBookCard(grid);
+      injectMissingCards(grid, missing);
       return;
     }
 
     console.log('[DS Enhancer] Grid not ready, starting MutationObserver');
 
-    // Grid not ready yet — observe DOM changes
     const observer = new MutationObserver(() => {
       if (!isProgressPage()) {
         observer.disconnect();
         return;
       }
-      const statsExists = !!document.getElementById(CARD_ID);
-      const bookExists = !!document.getElementById(BOOK_CARD_ID);
-      if (statsExists && bookExists) {
+      const m = missingCards();
+      if (!m.stats && !m.book) {
         observer.disconnect();
         return;
       }
@@ -100,8 +107,7 @@
       if (g) {
         console.log('[DS Enhancer] Grid appeared, injecting');
         observer.disconnect();
-        if (!statsExists) injectCard(g);
-        if (!bookExists) injectBookCard(g);
+        injectMissingCards(g, m);
       }
     });
 
@@ -110,15 +116,12 @@
     // Safety timeout — stop observing after 15s
     setTimeout(() => {
       observer.disconnect();
-      // One final attempt after timeout in case we missed it
-      const statsExists = !!document.getElementById(CARD_ID);
-      const bookExists = !!document.getElementById(BOOK_CARD_ID);
-      if ((!statsExists || !bookExists) && isProgressPage()) {
+      const m = missingCards();
+      if ((m.stats || m.book) && isProgressPage()) {
         const g = findGridContainer();
         if (g) {
           console.log('[DS Enhancer] Grid found on timeout retry, injecting');
-          if (!statsExists) injectCard(g);
-          if (!bookExists) injectBookCard(g);
+          injectMissingCards(g, m);
         } else {
           console.warn('[DS Enhancer] Grid not found after 15s timeout');
         }
@@ -183,7 +186,6 @@
         card.querySelector('.ds-card-refresh')?.addEventListener('click', handleRefresh);
       }
     }
-
   }
 
   async function injectBookCard(gridContainer) {
@@ -191,7 +193,7 @@
     console.log('[DS Enhancer] injectBookCard — creating book tracker card');
 
     const liveGrid = findGridContainer() || gridContainer;
-    if (!document.contains(liveGrid)) {
+    if (!liveGrid || !document.contains(liveGrid)) {
       console.warn('[DS Enhancer] injectBookCard — grid container not in document, skipping');
       return;
     }
