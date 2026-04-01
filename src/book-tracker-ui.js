@@ -24,7 +24,7 @@ const BookTrackerUI = {
     });
   },
 
-  // ---- ISBN Lookup ----
+  // ---- Book Search (ISBN or title/author) ----
 
   async lookupIsbn(isbn) {
     const clean = isbn.replace(/[-\s]/g, '');
@@ -43,7 +43,21 @@ const BookTrackerUI = {
     const author = authors.join(', ');
     const pages = book.number_of_pages || 0;
 
-    return { title, author, pages };
+    return { title, author, isbn: clean, pages };
+  },
+
+  async searchBooks(query) {
+    const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=7&fields=title,author_name,isbn,number_of_pages_median,first_publish_year`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    return (json.docs || []).map(doc => ({
+      title: doc.title || '',
+      author: (doc.author_name || []).join(', '),
+      isbn: (doc.isbn || [])[0] || '',
+      pages: doc.number_of_pages_median || 0,
+      year: doc.first_publish_year || null,
+    }));
   },
 
   // ---- Stats ----
@@ -106,14 +120,15 @@ const BookTrackerUI = {
       <div class="ds-book-form">
         <div class="ds-book-form-row">
           <div class="ds-book-form-field">
-            <label class="ds-book-form-label">ISBN Lookup</label>
+            <label class="ds-book-form-label">Book Search</label>
             <div class="ds-book-isbn-row">
-              <input class="ds-book-input ds-book-isbn-input" type="text" placeholder="e.g. 9780140449136" />
-              <button class="ds-book-lookup-btn">Lookup</button>
+              <input class="ds-book-input ds-book-search-input" type="text" placeholder="Title, author, or ISBN…" />
+              <button class="ds-book-lookup-btn">Search</button>
             </div>
           </div>
         </div>
         <div class="ds-book-lookup-status"></div>
+        <div class="ds-book-search-results ds-book-search-results-hidden"></div>
         <div class="ds-book-form-row">
           <div class="ds-book-form-field">
             <label class="ds-book-form-label">Title <span class="ds-book-required">*</span></label>
@@ -182,7 +197,7 @@ const BookTrackerUI = {
       const wrap = card.querySelector('.ds-book-form-wrap');
       wrap.classList.toggle('ds-book-form-hidden');
       if (!wrap.classList.contains('ds-book-form-hidden')) {
-        card.querySelector('.ds-book-isbn-input').focus();
+        card.querySelector('.ds-book-search-input').focus();
       }
     });
 
@@ -192,12 +207,12 @@ const BookTrackerUI = {
       this.clearForm(card);
     });
 
-    // ISBN lookup on button click or Enter key
+    // Book search on button click or Enter key
     card.querySelector('.ds-book-lookup-btn').addEventListener('click', () => {
-      this.handleIsbnLookup(card);
+      this.handleSearch(card);
     });
-    card.querySelector('.ds-book-isbn-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') this.handleIsbnLookup(card);
+    card.querySelector('.ds-book-search-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') this.handleSearch(card);
     });
 
     // Live word count: auto-populate from pages × words/page unless manually set
@@ -241,42 +256,81 @@ const BookTrackerUI = {
 
   // ---- Handlers ----
 
-  async handleIsbnLookup(card) {
-    const isbn = card.querySelector('.ds-book-isbn-input').value.trim();
-    if (!isbn) return;
+  async handleSearch(card) {
+    const query = card.querySelector('.ds-book-search-input').value.trim();
+    if (!query) return;
 
     const statusEl = card.querySelector('.ds-book-lookup-status');
-    const clean = isbn.replace(/[-\s]/g, '');
-    if (!/^\d{10}$|^\d{13}$/.test(clean)) {
-      statusEl.textContent = 'Enter a valid 10 or 13-digit ISBN.';
-      statusEl.className = 'ds-book-lookup-status ds-book-lookup-error';
-      return;
-    }
-    const lookupBtn = card.querySelector('.ds-book-lookup-btn');
+    const searchBtn = card.querySelector('.ds-book-lookup-btn');
+    const clean = query.replace(/[-\s]/g, '');
+    const isIsbn = /^\d{10}$|^\d{13}$/.test(clean);
 
-    statusEl.textContent = 'Looking up...';
+    statusEl.textContent = 'Searching…';
     statusEl.className = 'ds-book-lookup-status ds-book-lookup-loading';
-    lookupBtn.disabled = true;
+    searchBtn.disabled = true;
 
     try {
-      const data = await this.lookupIsbn(isbn);
-      card.querySelector('.ds-book-title-input').value = data.title || '';
-      card.querySelector('.ds-book-author-input').value = data.author || '';
-      if (data.pages) {
-        const pagesEl = card.querySelector('.ds-book-pages-input');
-        pagesEl.value = data.pages;
-        pagesEl.dispatchEvent(new Event('input'));
+      if (isIsbn) {
+        const data = await this.lookupIsbn(query);
+        this.populateForm(card, data);
+        this.hideSearchResults(card);
+        statusEl.textContent = data.title ? `Found: "${data.title}"` : 'Found! Fill in any missing details.';
+        statusEl.className = 'ds-book-lookup-status ds-book-lookup-success';
+      } else {
+        const results = await this.searchBooks(query);
+        if (results.length === 0) {
+          this.hideSearchResults(card);
+          statusEl.textContent = 'No results found. Enter details manually.';
+          statusEl.className = 'ds-book-lookup-status ds-book-lookup-error';
+        } else {
+          this.showSearchResults(card, results);
+          statusEl.textContent = `${results.length} result${results.length > 1 ? 's' : ''} — select one below.`;
+          statusEl.className = 'ds-book-lookup-status ds-book-lookup-success';
+        }
       }
-      statusEl.textContent = data.title
-        ? `Found: "${data.title}"`
-        : 'Found! Fill in any missing details.';
-      statusEl.className = 'ds-book-lookup-status ds-book-lookup-success';
     } catch (err) {
-      statusEl.textContent = 'ISBN not found. Enter details manually.';
+      this.hideSearchResults(card);
+      statusEl.textContent = 'Search failed. Enter details manually.';
       statusEl.className = 'ds-book-lookup-status ds-book-lookup-error';
     } finally {
-      lookupBtn.disabled = false;
+      searchBtn.disabled = false;
     }
+  },
+
+  populateForm(card, data) {
+    card.querySelector('.ds-book-title-input').value = data.title || '';
+    card.querySelector('.ds-book-author-input').value = data.author || '';
+    if (data.pages) {
+      const pagesEl = card.querySelector('.ds-book-pages-input');
+      pagesEl.value = data.pages;
+      pagesEl.dispatchEvent(new Event('input'));
+    }
+  },
+
+  showSearchResults(card, results) {
+    const container = card.querySelector('.ds-book-search-results');
+    container.innerHTML = results.map((r, i) => `
+      <div class="ds-book-search-result" data-index="${i}">
+        <span class="ds-book-result-title">${this.escapeHtml(r.title)}</span>
+        <span class="ds-book-result-meta">${this.escapeHtml([r.author, r.year].filter(Boolean).join(' · '))}</span>
+      </div>`).join('');
+    container.classList.remove('ds-book-search-results-hidden');
+
+    container.querySelectorAll('.ds-book-search-result').forEach((el, i) => {
+      el.addEventListener('click', () => {
+        this.populateForm(card, results[i]);
+        this.hideSearchResults(card);
+        const statusEl = card.querySelector('.ds-book-lookup-status');
+        statusEl.textContent = `Selected: "${results[i].title}"`;
+        statusEl.className = 'ds-book-lookup-status ds-book-lookup-success';
+      });
+    });
+  },
+
+  hideSearchResults(card) {
+    const container = card.querySelector('.ds-book-search-results');
+    container.innerHTML = '';
+    container.classList.add('ds-book-search-results-hidden');
   },
 
   async handleAddBook(card, books) {
@@ -291,7 +345,9 @@ const BookTrackerUI = {
     }
 
     const author = card.querySelector('.ds-book-author-input').value.trim();
-    const isbn = card.querySelector('.ds-book-isbn-input').value.trim();
+    const searchQuery = card.querySelector('.ds-book-search-input').value.trim();
+    const cleanQuery = searchQuery.replace(/[-\s]/g, '');
+    const isbn = /^\d{10}$|^\d{13}$/.test(cleanQuery) ? cleanQuery : '';
     const pages = parseInt(card.querySelector('.ds-book-pages-input').value) || 0;
     const wpp = parseInt(card.querySelector('.ds-book-wpp-input').value) || this.WORDS_PER_PAGE_DEFAULT;
     const manualWordCount = parseInt(card.querySelector('.ds-book-wordcount-input').value) || 0;
@@ -334,7 +390,8 @@ const BookTrackerUI = {
   },
 
   clearForm(card) {
-    card.querySelector('.ds-book-isbn-input').value = '';
+    card.querySelector('.ds-book-search-input').value = '';
+    this.hideSearchResults(card);
     card.querySelector('.ds-book-title-input').value = '';
     card.querySelector('.ds-book-author-input').value = '';
     card.querySelector('.ds-book-pages-input').value = '';
