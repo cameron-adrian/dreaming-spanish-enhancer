@@ -882,6 +882,173 @@
   transition: all 0.15s;
 }
 
+/* ---- Google Sheets Settings Panel ---- */
+.ds-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ds-sheets-settings-btn {
+  background: none;
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  transition: all 0.15s;
+}
+
+.ds-sheets-settings-btn:hover {
+  background: var(--ds-hover);
+  color: var(--ds-text);
+}
+
+.ds-sheets-settings-wrap {
+  border-top: 1px solid var(--ds-border);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.ds-sheets-settings-hidden {
+  display: none;
+}
+
+.ds-sheets-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ds-sheets-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ds-sheets-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ds-text-secondary);
+}
+
+.ds-sheets-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ds-sheets-enabled-cb {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.ds-sheets-toggle-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  background: var(--ds-border);
+  border-radius: 9px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.ds-sheets-enabled-cb:checked + .ds-sheets-toggle-track {
+  background: var(--ds-secondary, #4CAF50);
+}
+
+.ds-sheets-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.ds-sheets-enabled-cb:checked + .ds-sheets-toggle-track .ds-sheets-toggle-thumb {
+  transform: translateX(14px);
+}
+
+.ds-sheets-toggle-label {
+  font-size: 0.8rem;
+  color: var(--ds-text-secondary);
+  min-width: 20px;
+}
+
+.ds-sheets-config {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ds-sheets-config-hidden {
+  display: none;
+}
+
+.ds-sheets-id-row {
+  display: flex;
+  gap: 6px;
+}
+
+.ds-sheets-id-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-sheets-save-btn {
+  background: var(--ds-secondary);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 6px 12px;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.ds-sheets-save-btn:hover {
+  opacity: 0.85;
+}
+
+.ds-sheets-hint {
+  font-size: 0.72rem;
+  color: var(--ds-text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.ds-sheets-status,
+.ds-book-sync-status {
+  font-size: 0.78rem;
+  min-height: 1.2em;
+}
+
+.ds-sheets-status-success,
+.ds-book-sync-success {
+  color: var(--ds-success, #4caf50);
+}
+
+.ds-sheets-status-error,
+.ds-book-sync-error {
+  color: var(--ds-error, #ef5350);
+}
+
+.ds-sheets-status-loading,
+.ds-book-sync-loading {
+  color: var(--ds-text-secondary);
+}
+
+/* ---- End Google Sheets ---- */
+
 .ds-book-delete-btn:hover {
   color: var(--ds-error);
   background: rgba(255, 98, 117, 0.1);

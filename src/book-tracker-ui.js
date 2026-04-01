@@ -72,22 +72,26 @@ const BookTrackerUI = {
 
   // ---- Card Creation ----
 
-  createCard(books, isDark) {
+  async createCard(books, isDark) {
     const card = document.createElement('div');
     card.className = 'ds-card ds-book-card' + (isDark ? ' ds-dark' : '');
 
+    const sheetsConfig = await SheetsIntegration.getConfig();
     const stats = this.computeStats(books);
-    card.innerHTML = this.buildCardHtml(books, stats);
-    this.wireEvents(card, books);
+    card.innerHTML = this.buildCardHtml(books, stats, sheetsConfig);
+    this.wireEvents(card, books, sheetsConfig);
 
     return card;
   },
 
-  buildCardHtml(books, stats) {
+  buildCardHtml(books, stats, sheetsConfig) {
     return `
       <div class="ds-card-header">
         <h2 class="ds-card-title">Book Tracker</h2>
-        <button class="ds-book-add-btn" title="Add a book">+ Add Book</button>
+        <div class="ds-card-header-actions">
+          <button class="ds-book-add-btn" title="Add a book">+ Add Book</button>
+          <button class="ds-sheets-settings-btn" title="Google Sheets settings">⚙ Sheets</button>
+        </div>
       </div>
       <div class="ds-card-stats">
         <div class="ds-stat">
@@ -112,6 +116,10 @@ const BookTrackerUI = {
       </div>
       <div class="ds-card-body-inner ds-book-list">
         ${this.buildBookListHtml(books)}
+      </div>
+      <div class="ds-book-sync-status"></div>
+      <div class="ds-sheets-settings-wrap ds-sheets-settings-hidden">
+        ${SheetsIntegration.buildSettingsHtml(sheetsConfig)}
       </div>`;
   },
 
@@ -191,7 +199,7 @@ const BookTrackerUI = {
 
   // ---- Event Wiring ----
 
-  wireEvents(card, books) {
+  wireEvents(card, books, sheetsConfig) {
     // Toggle add form
     card.querySelector('.ds-book-add-btn').addEventListener('click', () => {
       const wrap = card.querySelector('.ds-book-form-wrap');
@@ -200,6 +208,14 @@ const BookTrackerUI = {
         card.querySelector('.ds-book-search-input').focus();
       }
     });
+
+    // Toggle Sheets settings panel
+    card.querySelector('.ds-sheets-settings-btn').addEventListener('click', () => {
+      card.querySelector('.ds-sheets-settings-wrap').classList.toggle('ds-sheets-settings-hidden');
+    });
+
+    // Wire Sheets settings controls
+    SheetsIntegration.wireSettingsEvents(card, sheetsConfig);
 
     // Cancel
     card.querySelector('.ds-book-cancel-btn').addEventListener('click', () => {
@@ -353,7 +369,7 @@ const BookTrackerUI = {
     const manualWordCount = parseInt(card.querySelector('.ds-book-wordcount-input').value) || 0;
     const wordCount = manualWordCount > 0 ? manualWordCount : pages * wpp;
 
-    books.push({
+    const newBook = {
       id: Date.now(),
       title,
       author,
@@ -362,13 +378,43 @@ const BookTrackerUI = {
       wordsPerPage: wpp,
       wordCount,
       addedAt: Date.now(),
-    });
+    };
+    books.push(newBook);
 
     await this.saveBooks(books);
     card.querySelector('.ds-book-form-wrap').classList.add('ds-book-form-hidden');
     this.clearForm(card);
     this.rerenderList(card, books);
     this.rerenderStats(card, books);
+
+    // Sync to Google Sheets if configured
+    this.syncBookToSheets(card, newBook);
+  },
+
+  async syncBookToSheets(card, book) {
+    const config = await SheetsIntegration.getConfig();
+    if (!config.enabled || !config.spreadsheetId) return;
+
+    const statusEl = card.querySelector('.ds-book-sync-status');
+    if (statusEl) {
+      statusEl.textContent = 'Syncing to Google Sheets…';
+      statusEl.className = 'ds-book-sync-status ds-book-sync-loading';
+    }
+
+    const result = await SheetsIntegration.appendBook(book);
+
+    if (!statusEl) return;
+    if (result?.ok) {
+      statusEl.textContent = 'Synced to Google Sheets ✓';
+      statusEl.className = 'ds-book-sync-status ds-book-sync-success';
+      setTimeout(() => {
+        statusEl.textContent = '';
+        statusEl.className = 'ds-book-sync-status';
+      }, 4000);
+    } else if (!result?.skipped) {
+      statusEl.textContent = `Sheets sync failed: ${result?.error || 'unknown error'}`;
+      statusEl.className = 'ds-book-sync-status ds-book-sync-error';
+    }
   },
 
   // ---- Re-rendering ----
