@@ -238,6 +238,12 @@ const BookTrackerUI = {
     if (!isbn) return;
 
     const statusEl = card.querySelector('.ds-book-lookup-status');
+    const clean = isbn.replace(/[-\s]/g, '');
+    if (!/^\d{10}$|^\d{13}$/.test(clean)) {
+      statusEl.textContent = 'Enter a valid 10 or 13-digit ISBN.';
+      statusEl.className = 'ds-book-lookup-status ds-book-lookup-error';
+      return;
+    }
     const lookupBtn = card.querySelector('.ds-book-lookup-btn');
 
     statusEl.textContent = 'Looking up...';

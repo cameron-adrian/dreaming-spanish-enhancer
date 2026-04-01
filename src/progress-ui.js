@@ -235,7 +235,7 @@ const ProgressUI = {
   videoUrl(video) {
     const langPath = (location.pathname.split('/')[1]) || 'spanish';
     const id = video.id || '';
-    return `/${langPath}/watch?id=${id}`;
+    return `/${langPath}/watch?id=${encodeURIComponent(id)}`;
   },
 
   formatCategoryPlural(name) {
