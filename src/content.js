@@ -467,6 +467,8 @@
   });
 
   // ---- Init ----
+  const { version } = chrome.runtime.getManifest();
+  console.log(`[DS Enhancer] v${version} loaded`);
   console.log('[DS Enhancer] Init — current path:', location.pathname, 'isProgress:', isProgressPage());
   patchHistory();
   onRouteChange();
