@@ -28,9 +28,10 @@ const HideVideoUI = {
     // thumbnail & ID — the image src contains the video ID as the filename
     // e.g. https://d36f3pr6g3yfev.cloudfront.net/5e4d1228aac87f3820954ce0.jpg
     const img = cardEl.querySelector('.ds-image__image, .ds-video-thumbnail__image, img');
-    const thumbnail = img?.src || img?.dataset?.src || '';
+    const thumbnail = img?.src || img?.dataset?.src || img?.dataset?.lazySrc
+      || img?.dataset?.original || img?.getAttribute('data-src') || '';
     const idMatch = thumbnail.match(/\/([a-f0-9]{24})\.(?:jpg|jpeg|png|webp)/i);
-    const id = idMatch ? idMatch[1] : '';
+    let id = idMatch ? idMatch[1] : '';
 
     // title
     const titleEl = cardEl.querySelector('.ds-catalog-video-card__title') ||
@@ -52,13 +53,22 @@ const HideVideoUI = {
       if (m) level = m[1].replace('special', '').replace(/-$/, '');
     }
 
-    // slug — best effort from any link href
+    // slug — best effort from any link href; also try extracting hex ID from the URL
     const link = cardEl.querySelector('a[href*="/videos/"], a[href*="/watch/"], a[href]');
     const href = link?.getAttribute('href') || '';
     const slugMatch = href.match(/\/(?:videos|watch)\/([^/?#]+)/);
     const slug = slugMatch ? slugMatch[1] : id;
 
-    return { id, slug, title, thumbnail, duration, level };
+    // If thumbnail didn't yield an ID, try the video page URL
+    if (!id) {
+      const urlIdMatch = href.match(/([a-f0-9]{24})/i);
+      if (urlIdMatch) id = urlIdMatch[1];
+    }
+
+    // Last resort: use the slug as the unique key
+    const effectiveId = id || slug;
+
+    return { id: effectiveId, slug, title, thumbnail, duration, level };
   },
 
   // ---- Menu Injection ----

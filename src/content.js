@@ -304,9 +304,15 @@
   function initMenuObserver() {
     // Capture the card that was clicked so portal-rendered menus can be linked back to it
     document.addEventListener('mousedown', e => {
-      const btn = e.target.closest('[data-testid="video-options-toggle"], [data-testid="video-options-toggle-mobile"]');
+      const btn = e.target.closest(
+        '[data-testid="video-options-toggle"], [data-testid="video-options-toggle-mobile"],' +
+        '[class*="video-options__toggle"], [class*="video-options-toggle"],' +
+        '[aria-label*="options" i], [aria-label*="more" i]'
+      );
       if (btn) {
-        _lastClickedCard = btn.closest('.ds-catalog-video-card');
+        _lastClickedCard = btn.closest(
+          '.ds-catalog-video-card, [class*="catalog-video-card"], [class*="video-card"]'
+        );
       }
     });
 
@@ -314,17 +320,36 @@
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType !== 1) continue;
-          // Look for the DS dropdown — it has data-testid="video-options-dropdown"
-          const menu = (node.dataset?.testid === 'video-options-dropdown')
-            ? node
-            : node.querySelector('[data-testid="video-options-dropdown"]');
+
+          // Strategy 1: node carries data-testid directly
+          let menu = null;
+          if (node.dataset?.testid === 'video-options-dropdown') {
+            menu = node;
+          } else if (node.querySelector) {
+            // Strategy 2: node wraps the dropdown
+            menu = node.querySelector('[data-testid="video-options-dropdown"]');
+            if (!menu) {
+              // Strategy 3: node contains DS video-option items — use their parent as the menu
+              const firstItem = node.querySelector('.ds-video-options__item');
+              if (firstItem) {
+                menu = firstItem.closest('[role="menu"], [class*="video-options"], [class*="dropdown"]')
+                  || firstItem.parentElement;
+              }
+            }
+          }
+          // Strategy 4: node itself is a video-option item — parent is the menu
+          if (!menu && node.classList?.contains('ds-video-options__item')) {
+            menu = node.parentElement;
+          }
+
           if (!menu || menu.querySelector('.ds-hide-menu-item')) continue;
 
-          const card = menu.closest('.ds-catalog-video-card') || _lastClickedCard;
+          const card = menu.closest('.ds-catalog-video-card, [class*="catalog-video-card"]')
+            || _lastClickedCard;
           if (!card) continue;
 
           const videoData = HideVideoUI.extractVideoData(card);
-          if (!videoData.id) continue;
+          if (!videoData.id && !videoData.slug) continue;
 
           HideVideoUI.injectMenuOption(menu, videoData, async () => {
             try {
