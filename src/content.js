@@ -201,7 +201,7 @@
     try {
       const books = await BookTrackerUI.loadBooks();
       console.log('[DS Enhancer] injectBookCard — books loaded:', books?.length ?? 0);
-      const bookCard = BookTrackerUI.createCard(books, isDarkMode());
+      const bookCard = await BookTrackerUI.createCard(books, isDarkMode());
       bookCard.id = BOOK_CARD_ID;
       const currentGrid = findGridContainer() || liveGrid;
       if (!document.contains(currentGrid)) {

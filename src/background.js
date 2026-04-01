@@ -29,6 +29,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (message.type === 'SHEETS_APPEND_BOOK') {
+    handleSheetsAppend(message.book, message.spreadsheetId, sendResponse);
+    return true; // keep channel open for async response
+  }
 });
 
 async function handleGetProgress(language, sendResponse) {
@@ -46,6 +51,71 @@ async function handleGetProgress(language, sendResponse) {
   } catch (err) {
     sendResponse({ ok: false, reason: err.message });
   }
+}
+
+// ---- Google Sheets Integration ----
+
+async function handleSheetsAppend(book, spreadsheetId, sendResponse) {
+  try {
+    const token = await getAuthToken();
+    const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`;
+    const authHeader = { 'Authorization': `Bearer ${token}` };
+
+    // Check whether the sheet already has data in A1 to decide if headers are needed
+    const checkResp = await fetch(`${baseUrl}/values/A1`, { headers: authHeader });
+    if (!checkResp.ok) {
+      const err = await checkResp.json().catch(() => ({}));
+      sendResponse({ ok: false, error: err.error?.message || `HTTP ${checkResp.status}` });
+      return;
+    }
+    const checkData = await checkResp.json();
+    const needsHeaders = !checkData.values || checkData.values.length === 0;
+
+    const appendUrl = `${baseUrl}/values/A:G:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    const rows = [];
+
+    if (needsHeaders) {
+      rows.push(['Date Added', 'Title', 'Author', 'ISBN', 'Pages', 'Words / Page', 'Word Count']);
+    }
+
+    rows.push([
+      new Date(book.addedAt).toLocaleDateString(),
+      book.title || '',
+      book.author || '',
+      book.isbn || '',
+      book.pages || 0,
+      book.wordsPerPage || 250,
+      book.wordCount || 0,
+    ]);
+
+    const appendResp = await fetch(appendUrl, {
+      method: 'POST',
+      headers: { ...authHeader, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: rows }),
+    });
+
+    if (!appendResp.ok) {
+      const err = await appendResp.json().catch(() => ({}));
+      sendResponse({ ok: false, error: err.error?.message || `HTTP ${appendResp.status}` });
+      return;
+    }
+
+    sendResponse({ ok: true });
+  } catch (err) {
+    sendResponse({ ok: false, error: err.message });
+  }
+}
+
+function getAuthToken() {
+  return new Promise((resolve, reject) => {
+    chrome.identity.getAuthToken({ interactive: true }, token => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(token);
+      }
+    });
+  });
 }
 
 // Set badge to indicate extension is active on DS pages
