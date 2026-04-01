@@ -136,9 +136,11 @@ const BookTrackerUI = {
             <input class="ds-book-input ds-book-wpp-input" type="number" value="${this.WORDS_PER_PAGE_DEFAULT}" min="1" />
           </div>
         </div>
-        <div class="ds-book-est-words">
-          Est. word count: <strong class="ds-book-est-value">—</strong>
-          <span class="ds-book-est-note">(pages × words/page)</span>
+        <div class="ds-book-form-row">
+          <div class="ds-book-form-field">
+            <label class="ds-book-form-label">Word Count</label>
+            <input class="ds-book-input ds-book-wordcount-input" type="number" placeholder="Auto-calculated from pages × words/page" min="0" />
+          </div>
         </div>
         <div class="ds-book-form-actions">
           <button class="ds-book-submit-btn">Add Book</button>
@@ -198,15 +200,21 @@ const BookTrackerUI = {
       if (e.key === 'Enter') this.handleIsbnLookup(card);
     });
 
-    // Live estimated word count
+    // Live word count: auto-populate from pages × words/page unless manually set
     const pagesInput = card.querySelector('.ds-book-pages-input');
     const wppInput = card.querySelector('.ds-book-wpp-input');
+    const wordCountInput = card.querySelector('.ds-book-wordcount-input');
+
+    wordCountInput.addEventListener('input', () => {
+      wordCountInput.dataset.manual = wordCountInput.value !== '' ? 'true' : '';
+    });
+
     const updateEst = () => {
+      if (wordCountInput.dataset.manual === 'true') return;
       const pages = parseInt(pagesInput.value) || 0;
       const wpp = parseInt(wppInput.value) || this.WORDS_PER_PAGE_DEFAULT;
       const est = pages * wpp;
-      card.querySelector('.ds-book-est-value').textContent =
-        est > 0 ? '~' + this.formatNumber(est) : '—';
+      wordCountInput.value = est > 0 ? est : '';
     };
     pagesInput.addEventListener('input', updateEst);
     wppInput.addEventListener('input', updateEst);
@@ -255,8 +263,9 @@ const BookTrackerUI = {
       card.querySelector('.ds-book-title-input').value = data.title || '';
       card.querySelector('.ds-book-author-input').value = data.author || '';
       if (data.pages) {
-        card.querySelector('.ds-book-pages-input').value = data.pages;
-        card.querySelector('.ds-book-pages-input').dispatchEvent(new Event('input'));
+        const pagesEl = card.querySelector('.ds-book-pages-input');
+        pagesEl.value = data.pages;
+        pagesEl.dispatchEvent(new Event('input'));
       }
       statusEl.textContent = data.title
         ? `Found: "${data.title}"`
@@ -285,6 +294,8 @@ const BookTrackerUI = {
     const isbn = card.querySelector('.ds-book-isbn-input').value.trim();
     const pages = parseInt(card.querySelector('.ds-book-pages-input').value) || 0;
     const wpp = parseInt(card.querySelector('.ds-book-wpp-input').value) || this.WORDS_PER_PAGE_DEFAULT;
+    const manualWordCount = parseInt(card.querySelector('.ds-book-wordcount-input').value) || 0;
+    const wordCount = manualWordCount > 0 ? manualWordCount : pages * wpp;
 
     books.push({
       id: Date.now(),
@@ -293,7 +304,7 @@ const BookTrackerUI = {
       isbn,
       pages,
       wordsPerPage: wpp,
-      wordCount: pages * wpp,
+      wordCount,
       addedAt: Date.now(),
     });
 
@@ -328,7 +339,9 @@ const BookTrackerUI = {
     card.querySelector('.ds-book-author-input').value = '';
     card.querySelector('.ds-book-pages-input').value = '';
     card.querySelector('.ds-book-wpp-input').value = this.WORDS_PER_PAGE_DEFAULT;
-    card.querySelector('.ds-book-est-value').textContent = '—';
+    const wcInput = card.querySelector('.ds-book-wordcount-input');
+    wcInput.value = '';
+    wcInput.dataset.manual = '';
     const statusEl = card.querySelector('.ds-book-lookup-status');
     statusEl.textContent = '';
     statusEl.className = 'ds-book-lookup-status';
