@@ -243,6 +243,9 @@
   // ---- Library Page: Hidden Videos Section ----
 
   function findLibraryContainer() {
+    // The library page contains .ds-downloads rows — find their common parent
+    const firstRow = document.querySelector('.ds-downloads');
+    if (firstRow?.parentElement) return firstRow.parentElement;
     return document.querySelector('[class*="library" i]') ||
            document.querySelector('main') ||
            document.querySelector('#__next > div > div');
@@ -285,9 +288,7 @@
     const hiddenIds = new Set((resp.videos || []).map(v => v.id));
     if (hiddenIds.size === 0) return;
 
-    const cards = document.querySelectorAll(
-      '[class*="video-card"], [class*="VideoCard"], [class*="video-item"], [class*="VideoItem"]'
-    );
+    const cards = document.querySelectorAll('.ds-catalog-video-card');
     cards.forEach(card => {
       // Skip cards inside our own injected section
       if (card.closest('#ds-hidden-section')) return;
@@ -301,15 +302,11 @@
   // ---- 3-Dots Menu Observer ----
 
   function initMenuObserver() {
-    // Track the last-clicked card so we can link portal-rendered menus to their card
+    // Capture the card that was clicked so portal-rendered menus can be linked back to it
     document.addEventListener('mousedown', e => {
-      const btn = e.target.closest(
-        '[class*="menu" i], [class*="dots" i], [aria-label*="more" i], [aria-label*="options" i], [aria-label*="actions" i]'
-      );
+      const btn = e.target.closest('[data-testid="video-options-toggle"], [data-testid="video-options-toggle-mobile"]');
       if (btn) {
-        _lastClickedCard =
-          btn.closest('[class*="video-card" i], [class*="VideoCard"], [class*="video-item" i]') ||
-          btn.closest('li, article');
+        _lastClickedCard = btn.closest('.ds-catalog-video-card');
       }
     });
 
@@ -317,14 +314,13 @@
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType !== 1) continue;
-          const menu = isDropdownMenu(node)
+          // Look for the DS dropdown — it has data-testid="video-options-dropdown"
+          const menu = (node.dataset?.testid === 'video-options-dropdown')
             ? node
-            : node.querySelector('[role="menu"], [class*="dropdown" i], [class*="context-menu" i]');
+            : node.querySelector('[data-testid="video-options-dropdown"]');
           if (!menu || menu.querySelector('.ds-hide-menu-item')) continue;
 
-          const card =
-            menu.closest('[class*="video-card" i], [class*="VideoCard"], [class*="video-item" i]') ||
-            _lastClickedCard;
+          const card = menu.closest('.ds-catalog-video-card') || _lastClickedCard;
           if (!card) continue;
 
           const videoData = HideVideoUI.extractVideoData(card);
@@ -334,10 +330,12 @@
             try {
               await sendMessage({ type: 'HIDE_VIDEO', video: videoData });
             } catch (e) { /* best-effort */ }
-            card.classList.add('ds-hidden-fade');
+            // Fade the card out then hide it
+            const targetCard = card.closest('.ds-carousel__slide') || card;
+            targetCard.classList.add('ds-hidden-fade');
             setTimeout(() => {
-              card.style.display = 'none';
-              card.classList.remove('ds-hidden-fade');
+              targetCard.style.display = 'none';
+              targetCard.classList.remove('ds-hidden-fade');
             }, 300);
             // Update hidden section count if visible
             const sec = document.getElementById(HIDDEN_SECTION_ID);
@@ -355,11 +353,6 @@
     });
 
     menuObserver.observe(document.body, { childList: true, subtree: true });
-  }
-
-  function isDropdownMenu(el) {
-    return el.getAttribute('role') === 'menu' ||
-      /dropdown|menu-list|context-menu/i.test(el.className || '');
   }
 
   // ---- Data Fetching ----

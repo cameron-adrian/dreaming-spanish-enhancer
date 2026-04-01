@@ -1,7 +1,7 @@
 /**
  * Dreaming Spanish Enhancer - Hide Video UI Module
  * Injects a "Hide video" option into the DS 3-dots menu and renders
- * a collapsible "Hidden videos" section on the /library page.
+ * a DS-carousel-style "Hidden videos" row on the /library page.
  */
 
 const HideVideoUI = {
@@ -19,45 +19,44 @@ const HideVideoUI = {
   // ---- Video Data Extraction ----
 
   /**
-   * Extract video metadata from a card DOM element.
-   * Uses ordered fallback selectors since DS class names may change.
+   * Extract video metadata from a .ds-catalog-video-card element.
+   * The video ID is reliably extracted from the CloudFront thumbnail URL.
    */
   extractVideoData(cardEl) {
     if (!cardEl) return {};
 
-    // slug / id from the first <a> href
-    const link = cardEl.querySelector('a[href*="/videos/"], a[href*="/watch/"]') ||
-                  cardEl.querySelector('a[href]');
-    const href = link?.getAttribute('href') || '';
-
-    // slug: last meaningful path segment
-    const slugMatch = href.match(/\/(?:videos|watch)\/([^/?#]+)/);
-    const slug = slugMatch ? slugMatch[1] : (href.split('/').filter(Boolean).pop() || '');
-
-    // id: 24-char hex from URL, or fall back to slug
-    const idMatch = href.match(/[a-f0-9]{24}/);
-    const id = idMatch ? idMatch[0] : slug;
+    // thumbnail & ID — the image src contains the video ID as the filename
+    // e.g. https://d36f3pr6g3yfev.cloudfront.net/5e4d1228aac87f3820954ce0.jpg
+    const img = cardEl.querySelector('.ds-image__image, .ds-video-thumbnail__image, img');
+    const thumbnail = img?.src || img?.dataset?.src || '';
+    const idMatch = thumbnail.match(/\/([a-f0-9]{24})\.(?:jpg|jpeg|png|webp)/i);
+    const id = idMatch ? idMatch[1] : '';
 
     // title
-    const titleEl =
-      cardEl.querySelector('[class*="title" i]') ||
-      cardEl.querySelector('h3, h2, h4') ||
-      link;
+    const titleEl = cardEl.querySelector('.ds-catalog-video-card__title') ||
+                    cardEl.querySelector('[class*="title" i]') ||
+                    cardEl.querySelector('h3, h2, h4, p');
     const title = (titleEl?.textContent || '').trim().replace(/\s+/g, ' ');
 
-    // thumbnail
-    const img = cardEl.querySelector('img');
-    const thumbnail = img?.src || img?.dataset?.src || '';
+    // duration — inside the watched-duration badge
+    const durationEl = cardEl.querySelector('.ds-video-thumbnail__badge--watched-duration span') ||
+                       cardEl.querySelector('[class*="duration" i] span') ||
+                       cardEl.querySelector('[class*="duration" i]');
+    const duration = (durationEl?.textContent || '').trim();
 
-    // duration — look for text like "9:04" or "1:12:06"
-    const durationEl = cardEl.querySelector('[class*="duration" i], [class*="time" i]');
-    const durationText = durationEl?.textContent?.trim() || '';
-    const duration = /\d+:\d+/.test(durationText) ? durationText : '';
+    // level — from badge class name like ds-badge--level-intermediate-special
+    const levelBadgeEl = cardEl.querySelector('[class*="badge--level-"]');
+    let level = '';
+    if (levelBadgeEl) {
+      const m = levelBadgeEl.className.match(/badge--level-([a-z]+)/);
+      if (m) level = m[1].replace('special', '').replace(/-$/, '');
+    }
 
-    // level badge
-    const levelEl = cardEl.querySelector('[class*="level" i], [class*="badge" i]');
-    const levelText = (levelEl?.textContent || '').toLowerCase().trim();
-    const level = ['superbeginner', 'beginner', 'intermediate', 'advanced'].find(l => levelText.includes(l)) || '';
+    // slug — best effort from any link href
+    const link = cardEl.querySelector('a[href*="/videos/"], a[href*="/watch/"], a[href]');
+    const href = link?.getAttribute('href') || '';
+    const slugMatch = href.match(/\/(?:videos|watch)\/([^/?#]+)/);
+    const slug = slugMatch ? slugMatch[1] : id;
 
     return { id, slug, title, thumbnail, duration, level };
   },
@@ -66,24 +65,29 @@ const HideVideoUI = {
 
   /**
    * Inject a "Hide video" option into the DS native dropdown menu.
-   * @param {Element} menuEl - The dropdown menu element
-   * @param {Object} videoData - Video metadata
-   * @param {Function} onHide - Callback when user clicks "Hide video"
+   * Matches the DS menu item structure exactly:
+   *   <div class="ds-video-options__item">
+   *     <svg .../>
+   *     <p class="ds-video-options__item-label">Hide video</p>
+   *   </div>
    */
   injectMenuOption(menuEl, videoData, onHide) {
-    if (menuEl.querySelector('.ds-hide-menu-item')) return; // already injected
+    if (menuEl.querySelector('.ds-hide-menu-item')) return;
 
     const item = document.createElement('div');
-    item.className = 'ds-hide-menu-item';
-    item.setAttribute('role', 'menuitem');
+    item.className = 'ds-video-options__item ds-hide-menu-item';
     item.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+      <svg class="ds-video-options__item-icon ds-hide-menu-item__icon"
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+           style="display:inline-block">
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8
+                 a18.45 18.45 0 0 1 5.06-5.94"/>
+        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8
+                 a18.5 18.5 0 0 1-2.16 3.19"/>
         <line x1="1" y1="1" x2="23" y2="23"/>
       </svg>
-      <span>Hide video</span>
+      <p class="ds-video-options__item-label">Hide video</p>
     `;
 
     item.addEventListener('click', e => {
@@ -94,111 +98,159 @@ const HideVideoUI = {
     menuEl.appendChild(item);
   },
 
-  // ---- Library Section ----
+  // ---- Library Section (DS Carousel Style) ----
 
   /**
-   * Build and return the "Hidden videos" collapsible section element.
+   * Build and return a DS-carousel-style "Hidden videos" section
+   * that visually matches the Downloads / My list rows on /library.
    */
   createSection(videos, isDark) {
-    const section = document.createElement('div');
-    section.id = 'ds-hidden-section';
-    section.className = 'ds-card' + (isDark ? ' ds-dark' : '');
+    const wrap = document.createElement('div');
+    wrap.id = 'ds-hidden-section';
+    wrap.className = 'ds-downloads';
 
-    section.innerHTML = this._buildSectionHtml(videos);
-    this._wireSectionEvents(section, videos);
-    return section;
+    wrap.innerHTML = this._buildCarouselHtml(videos);
+    this._wireSectionEvents(wrap, videos);
+    return wrap;
   },
 
-  _buildSectionHtml(videos) {
+  _buildCarouselHtml(videos) {
     return `
-      <div class="ds-hidden-header">
-        <span class="ds-hidden-title">Hidden videos (${videos.length})</span>
-        <svg class="ds-hidden-chevron" xmlns="http://www.w3.org/2000/svg"
-             width="20" height="20" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </div>
-      <div class="ds-hidden-body collapsed">
-        ${videos.length === 0
-          ? '<p class="ds-hidden-empty">No hidden videos yet.</p>'
-          : `<div class="ds-hidden-grid">${videos.map(v => this._buildVideoCardHtml(v)).join('')}</div>`
-        }
-      </div>
-    `;
-  },
-
-  _buildVideoCardHtml(video) {
-    const levelClass = video.level ? `ds-level-${video.level.replace(' ', '')}` : '';
-    return `
-      <div class="ds-hidden-video-card" data-video-id="${this._esc(video.id)}">
-        ${video.thumbnail
-          ? `<img src="${this._esc(video.thumbnail)}" alt="${this._esc(video.title)}" loading="lazy">`
-          : '<div class="ds-hidden-video-thumb-placeholder"></div>'
-        }
-        <div class="ds-hidden-video-info">
-          <div class="ds-hidden-video-title">${this._esc(video.title || 'Untitled')}</div>
-          <div class="ds-hidden-video-meta">
-            ${video.level ? `<span class="ds-hidden-level-badge ${levelClass}">${this._esc(video.level)}</span>` : ''}
-            ${video.duration ? `<span class="ds-hidden-duration">${this._esc(video.duration)}</span>` : ''}
+      <div class="ds-carousel ds-hidden-carousel">
+        <div class="ds-carousel__header">
+          <div class="ds-carousel__header-group">
+            <div class="ds-carousel__header-title-group">
+              <svg class="ds-carousel__icon" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                   stroke-linejoin="round" style="display:inline-block;width:20px;height:20px">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8
+                         a18.45 18.45 0 0 1 5.06-5.94"/>
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8
+                         a18.5 18.5 0 0 1-2.16 3.19"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+              <h1 class="ds-carousel__title ds-text-capitalize-first ds-hidden-title">
+                Hidden videos (${videos.length})
+              </h1>
+            </div>
+            <button class="btn ds-button ds-button--primary-invert ds-button--compress ds-hidden-toggle-btn">
+              ${videos.length === 0 ? 'Show' : 'Show'}
+              <svg class="ds-button__icon ds-button__icon--sm ds-button__icon--right ds-hidden-chevron"
+                   viewBox="0 0 1024 1024" style="display:inline-block;stroke:currentcolor;fill:currentcolor">
+                <polyline points="256 384 512 640 768 384" stroke-width="120"
+                          stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              </svg>
+            </button>
           </div>
-          <button class="ds-unhide-btn" data-video-id="${this._esc(video.id)}">Unhide</button>
+        </div>
+        <div class="ds-carousel__carousel ds-hidden-body collapsed">
+          ${videos.length === 0
+            ? '<p class="ds-hidden-empty" style="padding:16px 0">No hidden videos yet.</p>'
+            : videos.map(v => this._buildSlideHtml(v)).join('')
+          }
         </div>
       </div>
     `;
   },
 
-  _wireSectionEvents(section, videos) {
-    // Toggle collapse/expand
-    const header = section.querySelector('.ds-hidden-header');
-    const body = section.querySelector('.ds-hidden-body');
-    const chevron = section.querySelector('.ds-hidden-chevron');
+  _buildSlideHtml(video) {
+    const levelClass = video.level
+      ? `ds-badge--level-${this._esc(video.level)}-special`
+      : '';
+    const levelLabel = video.level
+      ? `<div class="ds-badge ds-badge--sm ${levelClass}">
+           <span class="ds-text-capitalize-first">${this._esc(video.level)}</span>
+         </div>`
+      : '';
 
-    header.addEventListener('click', () => {
+    return `
+      <div class="ds-carousel__slide ds-downloads__slide ds-hidden-slide"
+           data-video-id="${this._esc(video.id)}">
+        <div class="ds-catalog-video-card">
+          <div class="ds-video-thumbnail">
+            <div class="ds-image">
+              ${video.thumbnail
+                ? `<img class="ds-image__image ds-video-thumbnail__image"
+                        src="${this._esc(video.thumbnail)}"
+                        alt="thumbnail" loading="lazy">`
+                : '<div class="ds-image__default"></div>'
+              }
+            </div>
+            ${video.duration
+              ? `<div class="ds-badge ds-badge--sm ds-badge--gray-80
+                            ds-video-thumbnail__badge ds-video-thumbnail__badge--watched-duration">
+                   <div class="ds-video-thumbnail__badge-content">
+                     <span>${this._esc(video.duration)}</span>
+                   </div>
+                 </div>`
+              : ''
+            }
+          </div>
+          <div class="ds-catalog-video-card__content">
+            <div class="ds-catalog-video-card__header">
+              <p class="ds-catalog-video-card__title">${this._esc(video.title || 'Untitled')}</p>
+            </div>
+            <div class="ds-catalog-video-card__footer">
+              <div class="ds-catalog-video-card__badges">
+                ${levelLabel}
+              </div>
+              <button class="ds-unhide-btn" data-video-id="${this._esc(video.id)}">
+                Unhide
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  _wireSectionEvents(wrap, videos) {
+    const btn = wrap.querySelector('.ds-hidden-toggle-btn');
+    const body = wrap.querySelector('.ds-hidden-body');
+    const chevron = wrap.querySelector('.ds-hidden-chevron');
+
+    btn.addEventListener('click', () => {
       const collapsed = body.classList.toggle('collapsed');
-      chevron.classList.toggle('open', !collapsed);
+      chevron.style.transform = collapsed ? '' : 'rotate(180deg)';
+      btn.querySelector('.ds-hidden-chevron').style.transform = collapsed ? '' : 'rotate(180deg)';
     });
 
-    // Unhide buttons
-    section.addEventListener('click', e => {
-      const btn = e.target.closest('.ds-unhide-btn');
-      if (!btn) return;
-      const videoId = btn.dataset.videoId;
-      this._unhideVideo(section, videoId);
+    // Unhide via event delegation
+    wrap.addEventListener('click', e => {
+      const unhideBtn = e.target.closest('.ds-unhide-btn');
+      if (!unhideBtn) return;
+      this._unhideVideo(wrap, unhideBtn.dataset.videoId);
     });
   },
 
-  _unhideVideo(section, videoId) {
+  _unhideVideo(wrap, videoId) {
     chrome.runtime.sendMessage({ type: 'UNHIDE_VIDEO', videoId }, response => {
       if (!response?.ok) return;
 
-      // Remove the card from the grid
-      const card = section.querySelector(`.ds-hidden-video-card[data-video-id="${CSS.escape(videoId)}"]`);
-      if (card) card.remove();
+      // Remove the slide from the carousel
+      const slide = wrap.querySelector(`.ds-hidden-slide[data-video-id="${CSS.escape(videoId)}"]`);
+      if (slide) slide.remove();
 
-      // Update count in header
-      const grid = section.querySelector('.ds-hidden-grid');
-      const remaining = grid ? grid.querySelectorAll('.ds-hidden-video-card').length : 0;
-      const titleEl = section.querySelector('.ds-hidden-title');
+      // Update count in title
+      const remaining = wrap.querySelectorAll('.ds-hidden-slide').length;
+      const titleEl = wrap.querySelector('.ds-hidden-title');
       if (titleEl) titleEl.textContent = `Hidden videos (${remaining})`;
 
       // Show empty message if none left
-      if (remaining === 0 && grid) {
-        grid.replaceWith(Object.assign(document.createElement('p'), {
-          className: 'ds-hidden-empty',
-          textContent: 'No hidden videos yet.'
-        }));
+      if (remaining === 0) {
+        const body = wrap.querySelector('.ds-hidden-body');
+        if (body) {
+          body.innerHTML = '<p class="ds-hidden-empty" style="padding:16px 0">No hidden videos yet.</p>';
+        }
       }
 
-      // Also un-hide the video card on the page if it exists
-      const pageCards = document.querySelectorAll(
-        '[class*="video-card"], [class*="VideoCard"], [class*="video-item"], [class*="VideoItem"]'
-      );
-      pageCards.forEach(pageCard => {
-        const data = HideVideoUI.extractVideoData(pageCard);
+      // Restore the card on the current page if it's visible
+      document.querySelectorAll('.ds-catalog-video-card').forEach(card => {
+        if (card.closest('#ds-hidden-section')) return;
+        const data = HideVideoUI.extractVideoData(card);
         if (data.id === videoId) {
-          pageCard.style.display = '';
-          pageCard.classList.remove('ds-hidden-fade');
+          card.style.display = '';
+          card.classList.remove('ds-hidden-fade');
         }
       });
     });
@@ -207,6 +259,10 @@ const HideVideoUI = {
   // ---- Helpers ----
 
   _esc(str) {
-    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   },
 };

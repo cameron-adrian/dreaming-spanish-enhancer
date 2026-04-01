@@ -1056,163 +1056,42 @@
 
 /* ---- Hide Video Menu Item ---- */
 
+/* Inherits .ds-video-options__item layout from DS; just add a top separator */
 .ds-hide-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  cursor: pointer;
-  font-size: 14px;
-  color: inherit;
   border-top: 1px solid rgba(128, 128, 128, 0.2);
-  border-radius: 0 0 6px 6px;
+  cursor: pointer;
 }
 
-.ds-hide-menu-item:hover {
-  background: rgba(128, 128, 128, 0.12);
-}
-
-.ds-hide-menu-item svg {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  opacity: 0.75;
+.ds-hide-menu-item__icon {
+  width: 20px;
+  height: 20px;
 }
 
 /* ---- Hidden Videos Section (Library Page) ---- */
 
-#ds-hidden-section {
-  margin: 24px 16px;
-}
-
-.ds-hidden-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  user-select: none;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--ds-border, #e0e0e0);
-}
-
-.ds-hidden-header:hover .ds-hidden-title {
-  color: var(--ds-primary, #ff9301);
-}
-
-.ds-hidden-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--ds-text, #272d37);
-  transition: color 0.15s;
-}
-
-.ds-hidden-chevron {
-  transition: transform 0.2s;
-  color: var(--ds-text-secondary, #66737f);
-  flex-shrink: 0;
-}
-
-.ds-hidden-chevron.open {
-  transform: rotate(180deg);
-}
-
-.ds-hidden-body {
-  margin-top: 16px;
-}
+/* The section reuses DS carousel classes; these styles handle our additions */
 
 .ds-hidden-body.collapsed {
   display: none;
 }
 
-.ds-hidden-empty {
-  color: var(--ds-text-secondary, #66737f);
-  font-size: 13px;
-  margin: 0;
-}
-
-.ds-hidden-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.ds-hidden-video-card {
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--ds-bg-base, #f3f2f7);
-}
-
-.ds-hidden-video-card img {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  display: block;
-}
-
-.ds-hidden-video-thumb-placeholder {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  background: var(--ds-bg-hover, #e8e5f0);
-}
-
-.ds-hidden-video-info {
-  padding: 8px 10px 10px;
-}
-
-.ds-hidden-video-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ds-text, #272d37);
-  margin-bottom: 6px;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.ds-hidden-video-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-.ds-hidden-level-badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: #fff;
-  text-transform: capitalize;
-}
-
-.ds-hidden-level-badge.ds-level-superbeginner { background: var(--ds-level-superbeginner, #0ed4d4); }
-.ds-hidden-level-badge.ds-level-beginner      { background: var(--ds-level-beginner, #239fe3); }
-.ds-hidden-level-badge.ds-level-intermediate  { background: var(--ds-level-intermediate, #ff7f3c); }
-.ds-hidden-level-badge.ds-level-advanced      { background: var(--ds-level-advanced, #ff2e65); }
-
-.ds-hidden-duration {
-  font-size: 11px;
-  color: var(--ds-text-secondary, #66737f);
-}
-
+/* Unhide button — sits inside the DS card footer */
 .ds-unhide-btn {
-  font-size: 12px;
-  padding: 4px 10px;
-  border: 1px solid var(--ds-border, #d5dde5);
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid currentColor;
   border-radius: 6px;
   cursor: pointer;
   background: transparent;
-  color: var(--ds-text, #272d37);
-  transition: background 0.15s, color 0.15s;
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  margin-top: 4px;
+  display: block;
 }
 
 .ds-unhide-btn:hover {
-  background: var(--ds-bg-hover, #f0eef8);
-  border-color: var(--ds-secondary-light, #8377c1);
-  color: var(--ds-secondary, #6354b1);
+  opacity: 1;
 }
 
 /* ---- Fade-out animation (card hiding) ---- */
