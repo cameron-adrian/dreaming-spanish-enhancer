@@ -17,7 +17,7 @@
         "https://app.dreaming.com/*",
         "https://app.dreamingspanish.com/*"
       ],
-      "js": ["src/api.js", "src/progress-ui.js", "src/sheets-integration.js", "src/book-tracker-ui.js", "src/content.js"],
+      "js": ["src/api.js", "src/progress-ui.js", "src/sheets-integration.js", "src/book-tracker-ui.js", "src/hide-video-ui.js", "src/content.js"],
       "css": ["src/progress.css"],
       "run_at": "document_idle"
     }

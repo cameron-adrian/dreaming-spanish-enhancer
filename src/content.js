@@ -8,9 +8,12 @@
 
   const CARD_ID = 'ds-enhancer-card';
   const BOOK_CARD_ID = 'ds-book-tracker-card';
+  const HIDDEN_SECTION_ID = 'ds-hidden-section';
   let progressData = null;
   let isLoading = false;
   let lastPath = null;
+  let _lastClickedCard = null; // captured on mousedown for portal-menu fallback
+  let menuObserver = null;
 
   // ---- SPA Navigation Detection ----
 
@@ -27,10 +30,25 @@
     } else {
       removeCard();
     }
+
+    if (isLibraryPage()) {
+      waitForLibraryAndInject();
+    } else {
+      const sec = document.getElementById(HIDDEN_SECTION_ID);
+      if (sec) sec.remove();
+    }
+
+    // Hide any video cards that are in the hidden list
+    applyHidingToPage();
+    setTimeout(applyHidingToPage, 600);
   }
 
   function isProgressPage() {
     return /\/progress\/?$/.test(location.pathname);
+  }
+
+  function isLibraryPage() {
+    return /\/library\/?$/.test(location.pathname);
   }
 
   // Detect SPA navigation by patching history methods
@@ -222,6 +240,128 @@
     if (bookCard) bookCard.remove();
   }
 
+  // ---- Library Page: Hidden Videos Section ----
+
+  function findLibraryContainer() {
+    return document.querySelector('[class*="library" i]') ||
+           document.querySelector('main') ||
+           document.querySelector('#__next > div > div');
+  }
+
+  function waitForLibraryAndInject() {
+    if (document.getElementById(HIDDEN_SECTION_ID)) return;
+
+    const container = findLibraryContainer();
+    if (container) {
+      injectHiddenSection(container);
+      return;
+    }
+
+    const obs = new MutationObserver(() => {
+      if (!isLibraryPage()) { obs.disconnect(); return; }
+      if (document.getElementById(HIDDEN_SECTION_ID)) { obs.disconnect(); return; }
+      const c = findLibraryContainer();
+      if (c) { obs.disconnect(); injectHiddenSection(c); }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    setTimeout(() => obs.disconnect(), 15000);
+  }
+
+  async function injectHiddenSection(container) {
+    if (document.getElementById(HIDDEN_SECTION_ID)) return;
+    const videos = await HideVideoUI.loadHiddenVideos();
+    const section = HideVideoUI.createSection(videos, isDarkMode());
+    container.appendChild(section);
+  }
+
+  // ---- Apply Hiding to Current Page ----
+
+  async function applyHidingToPage() {
+    let resp;
+    try {
+      resp = await sendMessage({ type: 'GET_HIDDEN_VIDEOS' });
+    } catch (e) { return; }
+
+    const hiddenIds = new Set((resp.videos || []).map(v => v.id));
+    if (hiddenIds.size === 0) return;
+
+    const cards = document.querySelectorAll(
+      '[class*="video-card"], [class*="VideoCard"], [class*="video-item"], [class*="VideoItem"]'
+    );
+    cards.forEach(card => {
+      // Skip cards inside our own injected section
+      if (card.closest('#ds-hidden-section')) return;
+      const data = HideVideoUI.extractVideoData(card);
+      if (data.id && hiddenIds.has(data.id)) {
+        card.style.display = 'none';
+      }
+    });
+  }
+
+  // ---- 3-Dots Menu Observer ----
+
+  function initMenuObserver() {
+    // Track the last-clicked card so we can link portal-rendered menus to their card
+    document.addEventListener('mousedown', e => {
+      const btn = e.target.closest(
+        '[class*="menu" i], [class*="dots" i], [aria-label*="more" i], [aria-label*="options" i], [aria-label*="actions" i]'
+      );
+      if (btn) {
+        _lastClickedCard =
+          btn.closest('[class*="video-card" i], [class*="VideoCard"], [class*="video-item" i]') ||
+          btn.closest('li, article');
+      }
+    });
+
+    menuObserver = new MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          const menu = isDropdownMenu(node)
+            ? node
+            : node.querySelector('[role="menu"], [class*="dropdown" i], [class*="context-menu" i]');
+          if (!menu || menu.querySelector('.ds-hide-menu-item')) continue;
+
+          const card =
+            menu.closest('[class*="video-card" i], [class*="VideoCard"], [class*="video-item" i]') ||
+            _lastClickedCard;
+          if (!card) continue;
+
+          const videoData = HideVideoUI.extractVideoData(card);
+          if (!videoData.id) continue;
+
+          HideVideoUI.injectMenuOption(menu, videoData, async () => {
+            try {
+              await sendMessage({ type: 'HIDE_VIDEO', video: videoData });
+            } catch (e) { /* best-effort */ }
+            card.classList.add('ds-hidden-fade');
+            setTimeout(() => {
+              card.style.display = 'none';
+              card.classList.remove('ds-hidden-fade');
+            }, 300);
+            // Update hidden section count if visible
+            const sec = document.getElementById(HIDDEN_SECTION_ID);
+            if (sec) {
+              const titleEl = sec.querySelector('.ds-hidden-title');
+              if (titleEl) {
+                const match = titleEl.textContent.match(/\d+/);
+                const count = match ? parseInt(match[0], 10) + 1 : 1;
+                titleEl.textContent = `Hidden videos (${count})`;
+              }
+            }
+          });
+        }
+      }
+    });
+
+    menuObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function isDropdownMenu(el) {
+    return el.getAttribute('role') === 'menu' ||
+      /dropdown|menu-list|context-menu/i.test(el.className || '');
+  }
+
   // ---- Data Fetching ----
 
   async function fetchData() {
@@ -312,4 +452,7 @@
   console.log('[DS Enhancer] Init — current path:', location.pathname, 'isProgress:', isProgressPage());
   patchHistory();
   onRouteChange();
+  initMenuObserver();
+  applyHidingToPage();
+  setTimeout(applyHidingToPage, 600);
 })();

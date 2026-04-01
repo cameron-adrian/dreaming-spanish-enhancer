@@ -6,8 +6,41 @@
 
 const CACHE_KEY = 'ds_progress_cache';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const HIDDEN_VIDEOS_KEY = 'ds_hidden_videos';
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'GET_HIDDEN_VIDEOS') {
+    chrome.storage.local.get([HIDDEN_VIDEOS_KEY], result => {
+      sendResponse({ ok: true, videos: result[HIDDEN_VIDEOS_KEY]?.videos || [] });
+    });
+    return true;
+  }
+
+  if (message.type === 'HIDE_VIDEO') {
+    chrome.storage.local.get([HIDDEN_VIDEOS_KEY], result => {
+      const existing = result[HIDDEN_VIDEOS_KEY]?.videos || [];
+      if (!existing.find(v => v.id === message.video.id)) {
+        existing.push({ ...message.video, hiddenAt: Date.now() });
+      }
+      chrome.storage.local.set({ [HIDDEN_VIDEOS_KEY]: { videos: existing } }, () => {
+        sendResponse({ ok: true });
+      });
+    });
+    return true;
+  }
+
+  if (message.type === 'UNHIDE_VIDEO') {
+    chrome.storage.local.get([HIDDEN_VIDEOS_KEY], result => {
+      const existing = result[HIDDEN_VIDEOS_KEY]?.videos || [];
+      const filtered = existing.filter(v => v.id !== message.videoId);
+      chrome.storage.local.set({ [HIDDEN_VIDEOS_KEY]: { videos: filtered } }, () => {
+        sendResponse({ ok: true });
+      });
+    });
+    return true;
+  }
+
+
   if (message.type === 'GET_PROGRESS') {
     handleGetProgress(message.language || 'es', sendResponse);
     return true; // keep channel open for async response
