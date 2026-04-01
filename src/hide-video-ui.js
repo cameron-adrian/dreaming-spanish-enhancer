@@ -84,20 +84,45 @@ const HideVideoUI = {
   injectMenuOption(menuEl, videoData, onHide) {
     if (menuEl.querySelector('.ds-hide-menu-item')) return;
 
-    const item = document.createElement('div');
-    item.className = 'ds-video-options__item ds-hide-menu-item';
+    // Detect the structure of existing menu items to match styling
+    const existingItem = menuEl.querySelector('.ds-video-options__item') || menuEl.children[0];
+    const tag = existingItem?.tagName?.toLowerCase() || 'div';
+    const item = document.createElement(tag);
+
+    // Copy classes from existing items so our item matches visually
+    if (existingItem?.className) {
+      item.className = existingItem.className + ' ds-hide-menu-item';
+    } else {
+      item.className = 'ds-video-options__item ds-hide-menu-item';
+    }
+
+    // Match label element tag and class from existing items
+    const existingLabel = existingItem?.querySelector('p, span');
+    const labelTag = existingLabel?.tagName?.toLowerCase() || 'p';
+    const labelClass = existingLabel?.className || 'ds-video-options__item-label';
+
+    // Match icon sizing from existing SVG icons
+    const existingSvg = existingItem?.querySelector('svg');
+    let svgSizeStyle = '';
+    if (existingSvg) {
+      const svgClass = existingSvg.getAttribute('class') || '';
+      const rect = existingSvg.getBoundingClientRect();
+      if (rect.width > 0) svgSizeStyle = `width:${rect.width}px;height:${rect.height}px;`;
+      item.querySelector('svg')?.setAttribute('class', svgClass + ' ds-hide-menu-item__icon');
+    }
+
     item.innerHTML = `
-      <svg class="ds-video-options__item-icon ds-hide-menu-item__icon"
+      <svg class="${existingSvg?.getAttribute('class') || 'ds-video-options__item-icon'} ds-hide-menu-item__icon"
            viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-           style="display:inline-block">
+           style="display:inline-block;${svgSizeStyle}">
         <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8
                  a18.45 18.45 0 0 1 5.06-5.94"/>
         <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8
                  a18.5 18.5 0 0 1-2.16 3.19"/>
         <line x1="1" y1="1" x2="23" y2="23"/>
       </svg>
-      <p class="ds-video-options__item-label">Hide video</p>
+      <${labelTag} class="${labelClass}">Hide video</${labelTag}>
     `;
 
     item.addEventListener('click', e => {

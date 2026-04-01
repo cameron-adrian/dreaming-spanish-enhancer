@@ -299,81 +299,136 @@
     });
   }
 
-  // ---- 3-Dots Menu Observer ----
+  // ---- 3-Dots Menu Detection & Injection ----
+
+  // Known labels that appear in the DS video options dropdown
+  const MENU_LABELS = ['Download', 'Share', 'Add to my list', 'Mark as watched'];
 
   function initMenuObserver() {
-    // Capture the card that was clicked so portal-rendered menus can be linked back to it.
-    // We track any mousedown inside a video card so we don't depend on specific button
-    // selectors that may not match the DS site's actual markup.
+    // Track any mousedown inside a video card so we know which card a menu belongs to
     document.addEventListener('mousedown', e => {
       const card = e.target.closest(
         '.ds-catalog-video-card, [class*="catalog-video-card"], [class*="video-card"]'
       );
-      if (card) _lastClickedCard = card;
+      if (card && !card.closest('#ds-hidden-section')) _lastClickedCard = card;
+    }, true);
+
+    // PRIMARY: After a click on a video card, poll for a visible dropdown menu.
+    // This handles menus that are pre-rendered but toggled via CSS (display/visibility/opacity),
+    // which a childList MutationObserver would never detect.
+    document.addEventListener('click', e => {
+      const card = e.target.closest(
+        '.ds-catalog-video-card, [class*="catalog-video-card"], [class*="video-card"]'
+      );
+      if (!card || card.closest('#ds-hidden-section')) return;
+      _lastClickedCard = card;
+      for (const delay of [10, 50, 150, 300, 500]) {
+        setTimeout(scanForMenuAndInject, delay);
+      }
+    }, true);
+
+    // SECONDARY: MutationObserver for menus that are dynamically added to the DOM
+    menuObserver = new MutationObserver(() => {
+      setTimeout(scanForMenuAndInject, 0);
     });
+    menuObserver.observe(document.body, { childList: true, subtree: true });
+  }
 
-    menuObserver = new MutationObserver(mutations => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType !== 1) continue;
+  function scanForMenuAndInject() {
+    if (!_lastClickedCard) return;
+    const menu = findVisibleVideoMenu();
+    if (!menu || menu.querySelector('.ds-hide-menu-item')) return;
 
-          // Strategy 1: node carries data-testid directly
-          let menu = null;
-          if (node.dataset?.testid === 'video-options-dropdown') {
-            menu = node;
-          } else if (node.querySelector) {
-            // Strategy 2: node wraps the dropdown
-            menu = node.querySelector('[data-testid="video-options-dropdown"]');
-            if (!menu) {
-              // Strategy 3: node contains DS video-option items — use their parent as the menu
-              const firstItem = node.querySelector('.ds-video-options__item');
-              if (firstItem) {
-                menu = firstItem.closest('[role="menu"], [class*="video-options"], [class*="dropdown"]')
-                  || firstItem.parentElement;
-              }
-            }
-          }
-          // Strategy 4: node itself is a video-option item — parent is the menu
-          if (!menu && node.classList?.contains('ds-video-options__item')) {
-            menu = node.parentElement;
-          }
+    const videoData = HideVideoUI.extractVideoData(_lastClickedCard);
+    if (!videoData.id && !videoData.slug) return;
 
-          if (!menu || menu.querySelector('.ds-hide-menu-item')) continue;
-
-          const card = menu.closest('.ds-catalog-video-card, [class*="catalog-video-card"]')
-            || _lastClickedCard;
-          if (!card) continue;
-
-          const videoData = HideVideoUI.extractVideoData(card);
-          if (!videoData.id && !videoData.slug) continue;
-
-          HideVideoUI.injectMenuOption(menu, videoData, async () => {
-            try {
-              await sendMessage({ type: 'HIDE_VIDEO', video: videoData });
-            } catch (e) { /* best-effort */ }
-            // Fade the card out then hide it
-            const targetCard = card.closest('.ds-carousel__slide') || card;
-            targetCard.classList.add('ds-hidden-fade');
-            setTimeout(() => {
-              targetCard.style.display = 'none';
-              targetCard.classList.remove('ds-hidden-fade');
-            }, 300);
-            // Update hidden section count if visible
-            const sec = document.getElementById(HIDDEN_SECTION_ID);
-            if (sec) {
-              const titleEl = sec.querySelector('.ds-hidden-title');
-              if (titleEl) {
-                const match = titleEl.textContent.match(/\d+/);
-                const count = match ? parseInt(match[0], 10) + 1 : 1;
-                titleEl.textContent = `Hidden videos (${count})`;
-              }
-            }
-          });
+    const cardRef = _lastClickedCard;
+    HideVideoUI.injectMenuOption(menu, videoData, async () => {
+      try {
+        await sendMessage({ type: 'HIDE_VIDEO', video: videoData });
+      } catch (e) { /* best-effort */ }
+      const targetCard = cardRef.closest('.ds-carousel__slide') || cardRef;
+      targetCard.classList.add('ds-hidden-fade');
+      setTimeout(() => {
+        targetCard.style.display = 'none';
+        targetCard.classList.remove('ds-hidden-fade');
+      }, 300);
+      const sec = document.getElementById(HIDDEN_SECTION_ID);
+      if (sec) {
+        const titleEl = sec.querySelector('.ds-hidden-title');
+        if (titleEl) {
+          const match = titleEl.textContent.match(/\d+/);
+          const count = match ? parseInt(match[0], 10) + 1 : 1;
+          titleEl.textContent = `Hidden videos (${count})`;
         }
       }
     });
+  }
 
-    menuObserver.observe(document.body, { childList: true, subtree: true });
+  /** Check if an element's text content contains at least 2 known DS menu labels */
+  function hasMenuLabels(el) {
+    const text = el.textContent || '';
+    let matches = 0;
+    for (const label of MENU_LABELS) {
+      if (text.includes(label)) matches++;
+    }
+    return matches >= 2;
+  }
+
+  /** Walk down from el to find the deepest visible child that still contains 2+ menu labels */
+  function narrowToMenuContainer(el) {
+    for (const child of el.children) {
+      if (hasMenuLabels(child) && isElVisible(child)) {
+        return narrowToMenuContainer(child);
+      }
+    }
+    return el;
+  }
+
+  function isElVisible(el) {
+    if (!el || !el.getBoundingClientRect) return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return false;
+    const style = getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0;
+  }
+
+  /**
+   * Find the currently visible video options dropdown anywhere on the page.
+   * Uses multiple strategies: data-testid, class-based selectors, role attributes,
+   * and ultimately text-content heuristics to find menus regardless of their markup.
+   */
+  function findVisibleVideoMenu() {
+    // Strategy 1: DS-specific selectors
+    for (const selector of [
+      '[data-testid="video-options-dropdown"]',
+      '[class*="video-options"]',
+    ]) {
+      for (const el of document.querySelectorAll(selector)) {
+        if (isElVisible(el) && hasMenuLabels(el)) return narrowToMenuContainer(el);
+      }
+    }
+
+    // Strategy 2: ARIA roles and common dropdown/popover patterns
+    for (const selector of [
+      '[role="menu"]',
+      '[role="listbox"]',
+      '[class*="dropdown"]',
+      '[class*="popover"]',
+      '[class*="popup"]',
+    ]) {
+      for (const el of document.querySelectorAll(selector)) {
+        if (isElVisible(el) && hasMenuLabels(el)) return narrowToMenuContainer(el);
+      }
+    }
+
+    // Strategy 3: Check direct children of body (React portals are typically appended here)
+    for (const el of document.body.children) {
+      if (el.nodeType !== 1 || el.id === '__next' || el.id === HIDDEN_SECTION_ID) continue;
+      if (isElVisible(el) && hasMenuLabels(el)) return narrowToMenuContainer(el);
+    }
+
+    return null;
   }
 
   // ---- Data Fetching ----
