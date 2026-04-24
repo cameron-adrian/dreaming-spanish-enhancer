@@ -3,13 +3,19 @@
   "description": "Progress bars and stats for your Dreaming Spanish journey. Track completion by country, guide, topic, and more.",
   "version": "0.2.1",
   "manifest_version": 3,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "dreaming-spanish-enhancer@cameron-adrian.github.io",
+      "strict_min_version": "121.0"
+    }
+  },
   "icons": {
     "16": "images/icon-16.png",
     "48": "images/icon-48.png",
     "128": "images/icon-128.png"
   },
   "background": {
-    "service_worker": "src/background.js"
+    "scripts": ["src/background.js"]
   },
   "content_scripts": [
     {
@@ -40,12 +46,7 @@
     "https://app.dreamingspanish.com/*",
     "https://openlibrary.org/*",
     "https://sheets.googleapis.com/*",
-    "https://www.googleapis.com/*"
-  ],
-  "oauth2": {
-    "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
-    "scopes": [
-      "https://www.googleapis.com/auth/spreadsheets"
-    ]
-  }
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*"
+  ]
 }
