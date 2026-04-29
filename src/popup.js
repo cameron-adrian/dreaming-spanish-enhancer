@@ -31,7 +31,6 @@ function showStats(progressData, timestamp) {
     watchedHours += stats.watched;
   }
 
-  const totalCount = userStats?.totalVideos || 0;
   const watchedCount = userStats?.watchedVideos || 0;
   const percent = totalHours > 0 ? Math.round((watchedHours / totalHours) * 100) : 0;
   const categories = Object.keys(progressData).filter(k => k !== '_userStats').length;

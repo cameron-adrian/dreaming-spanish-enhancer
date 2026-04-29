@@ -21,7 +21,6 @@
     const path = location.pathname;
     if (path === lastPath) return;
     lastPath = path;
-    console.log('[DS Enhancer] Route changed:', path, 'isProgress:', isProgressPage());
 
     if (isProgressPage()) {
       // Clear cached progress so we always fetch fresh on navigation
@@ -97,19 +96,13 @@
 
   function waitForGridAndInject() {
     const missing = missingCards();
-    if (!missing.stats && !missing.book) {
-      console.log('[DS Enhancer] Both cards already exist, skipping inject');
-      return;
-    }
+    if (!missing.stats && !missing.book) return;
 
     const grid = findGridContainer();
     if (grid) {
-      console.log('[DS Enhancer] Grid found immediately, injecting');
       injectMissingCards(grid, missing);
       return;
     }
-
-    console.log('[DS Enhancer] Grid not ready, starting MutationObserver');
 
     const observer = new MutationObserver(() => {
       if (!isProgressPage()) {
@@ -123,7 +116,6 @@
       }
       const g = findGridContainer();
       if (g) {
-        console.log('[DS Enhancer] Grid appeared, injecting');
         observer.disconnect();
         injectMissingCards(g, m);
       }
@@ -138,7 +130,6 @@
       if ((m.stats || m.book) && isProgressPage()) {
         const g = findGridContainer();
         if (g) {
-          console.log('[DS Enhancer] Grid found on timeout retry, injecting');
           injectMissingCards(g, m);
         } else {
           console.warn('[DS Enhancer] Grid not found after 15s timeout');
@@ -149,7 +140,6 @@
 
   async function injectCard(gridContainer) {
     if (document.getElementById(CARD_ID)) return;
-    console.log('[DS Enhancer] injectCard — creating placeholder');
 
     // Create a placeholder card while loading
     const placeholder = document.createElement('div');
@@ -164,10 +154,7 @@
     `;
     gridContainer.appendChild(placeholder);
 
-    // Fetch data
-    console.log('[DS Enhancer] injectCard — fetching data...');
     await fetchData();
-    console.log('[DS Enhancer] injectCard — fetch complete, has data:', !!progressData);
 
     // Replace placeholder with full card
     const existing = document.getElementById(CARD_ID);
@@ -208,26 +195,17 @@
 
   async function injectBookCard(gridContainer) {
     if (document.getElementById(BOOK_CARD_ID)) return;
-    console.log('[DS Enhancer] injectBookCard — creating book tracker card');
 
     const liveGrid = findGridContainer() || gridContainer;
-    if (!liveGrid || !document.contains(liveGrid)) {
-      console.warn('[DS Enhancer] injectBookCard — grid container not in document, skipping');
-      return;
-    }
+    if (!liveGrid || !document.contains(liveGrid)) return;
 
     try {
       const books = await BookTrackerUI.loadBooks();
-      console.log('[DS Enhancer] injectBookCard — books loaded:', books?.length ?? 0);
       const bookCard = await BookTrackerUI.createCard(books, isDarkMode());
       bookCard.id = BOOK_CARD_ID;
       const currentGrid = findGridContainer() || liveGrid;
-      if (!document.contains(currentGrid)) {
-        console.warn('[DS Enhancer] injectBookCard — grid container detached after async load, skipping');
-        return;
-      }
+      if (!document.contains(currentGrid)) return;
       currentGrid.appendChild(bookCard);
-      console.log('[DS Enhancer] injectBookCard — book tracker card injected');
     } catch (err) {
       console.error('[DS Enhancer] injectBookCard — failed to load or render book tracker:', err);
     }
@@ -321,7 +299,6 @@
         '.ds-catalog-video-card, [class*="catalog-video-card"], [class*="video-card"]'
       );
       if (!card || card.closest('#ds-hidden-section')) return;
-      _lastClickedCard = card;
       for (const delay of [10, 50, 150, 300, 500]) {
         setTimeout(scanForMenuAndInject, delay);
       }
@@ -448,11 +425,7 @@
             Object.keys(cached.data).filter(k => !k.startsWith('_')).length > 0 &&
             cached.data._almostDone) {
           progressData = cached.data;
-          console.log('[DS Enhancer] Using cached data');
           return;
-        }
-        if (cached.ok && cached.data && !cached.data._almostDone) {
-          console.log('[DS Enhancer] Cache missing _almostDone, fetching fresh data');
         }
       } catch (e) { /* cache unavailable */ }
 
@@ -520,7 +493,6 @@
   // ---- Init ----
   const { version } = chrome.runtime.getManifest();
   console.log(`[DS Enhancer] v${version} loaded`);
-  console.log('[DS Enhancer] Init — current path:', location.pathname, 'isProgress:', isProgressPage());
   patchHistory();
   onRouteChange();
   initMenuObserver();
