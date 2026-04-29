@@ -9,6 +9,7 @@
   const CARD_ID = 'ds-enhancer-card';
   const BOOK_CARD_ID = 'ds-book-tracker-card';
   const HIDDEN_SECTION_ID = 'ds-hidden-section';
+  const HOURS_YEAR_TILE_ID = 'ds-hours-this-year-tile';
   let progressData = null;
   let isLoading = false;
   let lastPath = null;
@@ -26,8 +27,10 @@
       // Clear cached progress so we always fetch fresh on navigation
       progressData = null;
       waitForGridAndInject();
+      waitForActivityTileAndInject();
     } else {
       removeCard();
+      removeHoursThisYearTile();
     }
 
     if (isLibraryPage()) {
@@ -216,6 +219,84 @@
     if (card) card.remove();
     const bookCard = document.getElementById(BOOK_CARD_ID);
     if (bookCard) bookCard.remove();
+  }
+
+  // ---- "Hours this year" tile (clones the native "Hours this month" tile) ----
+
+  function findHoursThisMonthTile() {
+    const valueEl = document.querySelector('[data-testid="hours-this-month-value"]');
+    return valueEl ? valueEl.closest('.ds-mini-card') : null;
+  }
+
+  function removeHoursThisYearTile() {
+    const t = document.getElementById(HOURS_YEAR_TILE_ID);
+    if (t) t.remove();
+  }
+
+  async function injectHoursThisYearTile() {
+    if (document.getElementById(HOURS_YEAR_TILE_ID)) return;
+
+    const source = findHoursThisMonthTile();
+    if (!source) return;
+
+    const clone = source.cloneNode(true);
+    clone.id = HOURS_YEAR_TILE_ID;
+
+    const labelSpan = clone.querySelector('.ds-mini-card__header-title span');
+    if (labelSpan) labelSpan.textContent = 'Hours this year';
+
+    const icon = clone.querySelector('.ds-mini-card__header-icon');
+    if (icon) icon.alt = 'hours-this-year';
+
+    const valueWrap = clone.querySelector('.ds-mini-card__header-value');
+    if (valueWrap) valueWrap.setAttribute('data-testid', 'hours-this-year-value');
+    const valueSpan = valueWrap?.querySelector('span');
+    if (valueSpan) valueSpan.textContent = '…';
+
+    source.insertAdjacentElement('afterend', clone);
+    console.log('[DS Enhancer] Hours-this-year tile injected, computing value...');
+
+    try {
+      const hours = await DSApi.computeYearlyHours();
+      const live = document.getElementById(HOURS_YEAR_TILE_ID);
+      if (!live) return;
+      if (hours == null) {
+        console.warn('[DS Enhancer] Could not compute yearly hours; removing tile');
+        live.remove();
+        return;
+      }
+      const span = live.querySelector('.ds-mini-card__header-value span');
+      if (span) span.textContent = hours.toFixed(1);
+    } catch (err) {
+      console.error('[DS Enhancer] Yearly hours computation failed:', err);
+      document.getElementById(HOURS_YEAR_TILE_ID)?.remove();
+    }
+  }
+
+  function waitForActivityTileAndInject() {
+    if (document.getElementById(HOURS_YEAR_TILE_ID)) return;
+
+    if (findHoursThisMonthTile()) {
+      injectHoursThisYearTile();
+      return;
+    }
+
+    const observer = new MutationObserver(() => {
+      if (!isProgressPage()) { observer.disconnect(); return; }
+      if (document.getElementById(HOURS_YEAR_TILE_ID)) { observer.disconnect(); return; }
+      if (findHoursThisMonthTile()) {
+        observer.disconnect();
+        injectHoursThisYearTile();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    setTimeout(() => {
+      observer.disconnect();
+      if (!document.getElementById(HOURS_YEAR_TILE_ID) && isProgressPage() && findHoursThisMonthTile()) {
+        injectHoursThisYearTile();
+      }
+    }, 15000);
   }
 
   // ---- Library Page: Hidden Videos Section ----

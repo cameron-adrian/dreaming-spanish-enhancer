@@ -287,5 +287,77 @@ const DSApi = {
     sectionCompleters.sort((a, b) => a.remaining - b.remaining || b.percent - a.percent);
 
     return { sectionCompleters, nearlyFinished };
+  },
+
+  _activityEndpoint: null,
+
+  /**
+   * Fetch daily watch-time records. Probes a list of likely DS endpoints and
+   * caches the first one that returns an array of date+seconds records.
+   * Returns the raw records array, or null if none of the candidates work.
+   */
+  async fetchDailyActivity() {
+    const candidates = this._activityEndpoint
+      ? [this._activityEndpoint]
+      : ['userExternalActivity', 'externalInput', 'userActivity', 'dailyWatchTime'];
+
+    for (const endpoint of candidates) {
+      try {
+        const resp = await this.fetch(endpoint, { timezone: '0' });
+        const records = this._extractActivityRecords(resp);
+        if (records && records.length > 0) {
+          this._activityEndpoint = endpoint;
+          console.log(`[DS Enhancer] daily activity endpoint: ${endpoint} (${records.length} records)`);
+          return records;
+        }
+      } catch (e) {
+        // Try next candidate
+      }
+    }
+    console.warn('[DS Enhancer] No daily activity endpoint matched candidates:', candidates);
+    return null;
+  },
+
+  /** Pull a date+seconds array out of an unknown-shaped response. */
+  _extractActivityRecords(resp) {
+    if (!resp) return null;
+    // Common shapes: { activity: [...] }, { days: [...] }, { records: [...] }, or a bare array
+    const arr = Array.isArray(resp) ? resp
+      : resp.activity || resp.days || resp.records || resp.data || resp.userExternalActivity
+      || resp.externalActivity || resp.dailyWatchTime || null;
+    if (!Array.isArray(arr)) return null;
+    return arr;
+  },
+
+  /**
+   * Sum watch seconds for the given calendar year (Jan 1 → today inclusive)
+   * and return hours rounded to one decimal. Returns null if no data source.
+   */
+  async computeYearlyHours(year = new Date().getFullYear()) {
+    const records = await this.fetchDailyActivity();
+    if (!records) return null;
+
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year + 1, 0, 1);
+    let totalSeconds = 0;
+
+    for (const r of records) {
+      const dateStr = r.date || r.day || r.d || r.timestamp;
+      if (!dateStr) continue;
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) continue;
+      if (date < yearStart || date >= yearEnd) continue;
+
+      let seconds = 0;
+      if (typeof r.timeSeconds === 'number') seconds = r.timeSeconds;
+      else if (typeof r.seconds === 'number') seconds = r.seconds;
+      else if (typeof r.time === 'number') seconds = r.time;
+      else if (typeof r.watchTime === 'number') seconds = r.watchTime;
+      else if (typeof r.minutes === 'number') seconds = r.minutes * 60;
+      else if (typeof r.value === 'number') seconds = r.value;
+      totalSeconds += seconds;
+    }
+
+    return Math.round((totalSeconds / 3600) * 10) / 10;
   }
 };
