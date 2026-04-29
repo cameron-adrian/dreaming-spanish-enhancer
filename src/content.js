@@ -293,8 +293,11 @@
 
     setTimeout(() => {
       observer.disconnect();
-      if (!document.getElementById(HOURS_YEAR_TILE_ID) && isProgressPage() && findHoursThisMonthTile()) {
+      if (document.getElementById(HOURS_YEAR_TILE_ID) || !isProgressPage()) return;
+      if (findHoursThisMonthTile()) {
         injectHoursThisYearTile();
+      } else {
+        console.warn('[DS Enhancer] Hours-this-month tile not found after 15s; skipping yearly tile');
       }
     }, 15000);
   }
