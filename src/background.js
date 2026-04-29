@@ -40,7 +40,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-
   if (message.type === 'GET_PROGRESS') {
     handleGetProgress(message.language || 'es', sendResponse);
     return true; // keep channel open for async response

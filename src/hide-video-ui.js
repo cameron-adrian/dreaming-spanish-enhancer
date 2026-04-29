@@ -105,10 +105,8 @@ const HideVideoUI = {
     const existingSvg = existingItem?.querySelector('svg');
     let svgSizeStyle = '';
     if (existingSvg) {
-      const svgClass = existingSvg.getAttribute('class') || '';
       const rect = existingSvg.getBoundingClientRect();
       if (rect.width > 0) svgSizeStyle = `width:${rect.width}px;height:${rect.height}px;`;
-      item.querySelector('svg')?.setAttribute('class', svgClass + ' ds-hide-menu-item__icon');
     }
 
     item.innerHTML = `
@@ -169,7 +167,7 @@ const HideVideoUI = {
               </h1>
             </div>
             <button class="btn ds-button ds-button--primary-invert ds-button--compress ds-hidden-toggle-btn">
-              ${videos.length === 0 ? 'Show' : 'Show'}
+              Show
               <svg class="ds-button__icon ds-button__icon--sm ds-button__icon--right ds-hidden-chevron"
                    viewBox="0 0 1024 1024" style="display:inline-block;stroke:currentcolor;fill:currentcolor">
                 <polyline points="256 384 512 640 768 384" stroke-width="120"
@@ -247,7 +245,6 @@ const HideVideoUI = {
     btn.addEventListener('click', () => {
       const collapsed = body.classList.toggle('collapsed');
       chevron.style.transform = collapsed ? '' : 'rotate(180deg)';
-      btn.querySelector('.ds-hidden-chevron').style.transform = collapsed ? '' : 'rotate(180deg)';
     });
 
     // Unhide via event delegation

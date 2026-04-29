@@ -55,9 +55,6 @@ const DSApi = {
    * grouped by guide, level, topic, and series.
    */
   async computeProgress(language = 'es') {
-    console.log('[DS Enhancer] Fetching catalog and watch history...');
-    const startTime = performance.now();
-
     const [videosResp, watchedResp, userResp, seriesResp] = await Promise.all([
       this.fetch('videos', { language }),
       this.fetch('watchedVideo', { language }),
@@ -73,8 +70,6 @@ const DSApi = {
     const watchedVideos = watchedResp.watchedVideos || [];
     const user = userResp?.user || {};
     const seriesList = seriesResp?.series || [];
-
-    console.log(`[DS Enhancer] Catalog: ${videos.length} videos, ${watchedVideos.length} watch records`);
 
     // Build lookup: videoId → watched info
     const watchedMap = new Map();
@@ -172,10 +167,6 @@ const DSApi = {
     // Attach almost-done data
     categories._almostDone = almostDone;
 
-    const elapsed = Math.round(performance.now() - startTime);
-    console.log(`[DS Enhancer] Progress computed in ${elapsed}ms — categories:`,
-      Object.keys(categories).filter(k => k !== '_userStats'));
-
     return categories;
   },
 
@@ -195,20 +186,15 @@ const DSApi = {
       // Try to get partial progress from various possible API fields
       let progress = 0;
       if (typeof watchInfo.watchPosition === 'number' && watchInfo.watchPosition > 0 && video.duration > 0) {
-
         progress = watchInfo.watchPosition / video.duration;
       } else if (typeof watchInfo.progress === 'number') {
-
         progress = watchInfo.progress; // 0-1 or 0-100
         if (progress > 1) progress = progress / 100; // normalize to 0-1
       } else if (typeof watchInfo.currentTime === 'number' && video.duration > 0) {
-
         progress = watchInfo.currentTime / video.duration;
       } else if (typeof watchInfo.watchedTime === 'number' && video.duration > 0) {
-
         progress = watchInfo.watchedTime / video.duration;
       } else if (typeof watchInfo.secondsWatched === 'number' && video.duration > 0) {
-
         progress = watchInfo.secondsWatched / video.duration;
       }
 
