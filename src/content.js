@@ -254,7 +254,6 @@
     if (valueSpan) valueSpan.textContent = '…';
 
     source.insertAdjacentElement('afterend', clone);
-    console.log('[DS Enhancer] Hours-this-year tile injected, computing value...');
 
     try {
       const hours = await DSApi.computeYearlyHours();
