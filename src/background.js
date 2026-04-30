@@ -7,6 +7,18 @@
 const CACHE_KEY = 'ds_progress_cache';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const HIDDEN_VIDEOS_KEY = 'ds_hidden_videos';
+const FIREFOX_OAUTH_TOKEN_KEY = 'ds_firefox_oauth_token';
+
+// Firefox cannot use the manifest `oauth2` block or chrome.identity.getAuthToken.
+// Paste the OAuth 2.0 Web Application client ID here for Firefox builds.
+// (Chrome ignores this and uses the `oauth2.client_id` from manifest.json.)
+const FIREFOX_OAUTH_CLIENT_ID = 'YOUR_FIREFOX_CLIENT_ID.apps.googleusercontent.com';
+const OAUTH_SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+
+const isFirefox = typeof browser !== 'undefined'
+  && browser.identity
+  && typeof browser.identity.launchWebAuthFlow === 'function'
+  && typeof chrome.identity.getAuthToken !== 'function';
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_HIDDEN_VIDEOS') {
@@ -96,6 +108,10 @@ async function handleSheetsAppend(book, spreadsheetId, sendResponse) {
     // Check whether the sheet already has data in A1 to decide if headers are needed
     const checkResp = await fetch(`${baseUrl}/values/A1`, { headers: authHeader });
     if (!checkResp.ok) {
+      // Firefox cached token may be revoked server-side; drop it so the next call re-prompts.
+      if (checkResp.status === 401 && isFirefox) {
+        await chrome.storage.local.remove(FIREFOX_OAUTH_TOKEN_KEY);
+      }
       const err = await checkResp.json().catch(() => ({}));
       sendResponse({ ok: false, error: err.error?.message || `HTTP ${checkResp.status}` });
       return;
@@ -139,6 +155,10 @@ async function handleSheetsAppend(book, spreadsheetId, sendResponse) {
 }
 
 function getAuthToken() {
+  return isFirefox ? getAuthTokenFirefox() : getAuthTokenChrome();
+}
+
+function getAuthTokenChrome() {
   return new Promise((resolve, reject) => {
     chrome.identity.getAuthToken({ interactive: true }, token => {
       if (chrome.runtime.lastError) {
@@ -148,6 +168,38 @@ function getAuthToken() {
       }
     });
   });
+}
+
+async function getAuthTokenFirefox() {
+  const cached = await getCachedFirefoxToken();
+  if (cached) return cached;
+
+  const redirectUri = browser.identity.getRedirectURL();
+  const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth'
+    + `?client_id=${encodeURIComponent(FIREFOX_OAUTH_CLIENT_ID)}`
+    + `&response_type=token`
+    + `&redirect_uri=${encodeURIComponent(redirectUri)}`
+    + `&scope=${encodeURIComponent(OAUTH_SCOPES)}`
+    + `&prompt=consent`;
+
+  const responseUrl = await browser.identity.launchWebAuthFlow({ url: authUrl, interactive: true });
+  const fragment = (responseUrl.split('#')[1] || '');
+  const params = new URLSearchParams(fragment);
+  const token = params.get('access_token');
+  const expiresIn = parseInt(params.get('expires_in') || '0', 10);
+  if (!token) throw new Error('OAuth flow did not return an access token');
+
+  // Refresh 60s before expiry to avoid using an about-to-expire token.
+  const expiresAt = Date.now() + Math.max(0, (expiresIn - 60)) * 1000;
+  await chrome.storage.local.set({ [FIREFOX_OAUTH_TOKEN_KEY]: { token, expiresAt } });
+  return token;
+}
+
+async function getCachedFirefoxToken() {
+  const result = await chrome.storage.local.get(FIREFOX_OAUTH_TOKEN_KEY);
+  const entry = result[FIREFOX_OAUTH_TOKEN_KEY];
+  if (entry && entry.token && entry.expiresAt > Date.now()) return entry.token;
+  return null;
 }
 
 // Set badge to indicate extension is active on DS pages
