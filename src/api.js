@@ -289,43 +289,25 @@ const DSApi = {
     return { sectionCompleters, nearlyFinished };
   },
 
-  _activityEndpoint: null,
-
   /**
-   * Fetch daily watch-time records. Probes a list of likely DS endpoints and
-   * caches the first one that returns an array of date+seconds records.
-   * Returns the raw records array, or null if none of the candidates work.
+   * Fetch the full daily watch-time history from DS.
+   * Endpoint: GET /dayWatchedTime?language=<lang>
+   * Returns the raw records array, or null on failure.
    */
-  async fetchDailyActivity() {
-    const candidates = this._activityEndpoint
-      ? [this._activityEndpoint]
-      : ['userExternalActivity', 'externalInput', 'userActivity', 'dailyWatchTime'];
-
-    for (const endpoint of candidates) {
-      try {
-        const resp = await this.fetch(endpoint, { timezone: '0' });
-        const records = this._extractActivityRecords(resp);
-        if (records && records.length > 0) {
-          this._activityEndpoint = endpoint;
-          console.log(`[DS Enhancer] daily activity endpoint: ${endpoint} (${records.length} records)`);
-          return records;
-        }
-      } catch (e) {
-        // Try next candidate
-      }
+  async fetchDailyActivity(language = 'es') {
+    let resp;
+    try {
+      resp = await this.fetch('dayWatchedTime', { language });
+    } catch (e) {
+      console.warn('[DS Enhancer] dayWatchedTime fetch failed:', e.message);
+      return null;
     }
-    console.warn('[DS Enhancer] No daily activity endpoint matched candidates:', candidates);
-    return null;
-  },
-
-  /** Pull a date+seconds array out of an unknown-shaped response. */
-  _extractActivityRecords(resp) {
-    if (!resp) return null;
-    // Common shapes: { activity: [...] }, { days: [...] }, { records: [...] }, or a bare array
     const arr = Array.isArray(resp) ? resp
-      : resp.activity || resp.days || resp.records || resp.data || resp.userExternalActivity
-      || resp.externalActivity || resp.dailyWatchTime || null;
-    if (!Array.isArray(arr)) return null;
+      : resp?.dayWatchedTime || resp?.days || resp?.data || null;
+    if (!Array.isArray(arr)) {
+      console.warn('[DS Enhancer] dayWatchedTime: unexpected response shape', resp);
+      return null;
+    }
     return arr;
   },
 
@@ -333,8 +315,8 @@ const DSApi = {
    * Sum watch seconds for the given calendar year (Jan 1 → today inclusive)
    * and return hours rounded to one decimal. Returns null if no data source.
    */
-  async computeYearlyHours(year = new Date().getFullYear()) {
-    const records = await this.fetchDailyActivity();
+  async computeYearlyHours(year = new Date().getFullYear(), language = 'es') {
+    const records = await this.fetchDailyActivity(language);
     if (!records) return null;
 
     const yearStart = new Date(year, 0, 1);
