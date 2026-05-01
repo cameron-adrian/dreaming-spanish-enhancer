@@ -20,64 +20,68 @@ const isFirefox = typeof browser !== 'undefined'
   && typeof browser.identity.launchWebAuthFlow === 'function'
   && typeof chrome.identity.getAuthToken !== 'function';
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'GET_HIDDEN_VIDEOS') {
+// Message dispatch — each handler is async and is responsible for calling
+// sendResponse. Unknown types respond explicitly so callers don't hang on a
+// dropped channel.
+const messageHandlers = {
+  GET_HIDDEN_VIDEOS(_msg, send) {
     chrome.storage.local.get([HIDDEN_VIDEOS_KEY], result => {
-      sendResponse({ ok: true, videos: result[HIDDEN_VIDEOS_KEY]?.videos || [] });
+      send({ ok: true, videos: result[HIDDEN_VIDEOS_KEY]?.videos || [] });
     });
-    return true;
-  }
+  },
 
-  if (message.type === 'HIDE_VIDEO') {
+  HIDE_VIDEO(msg, send) {
     chrome.storage.local.get([HIDDEN_VIDEOS_KEY], result => {
       const existing = result[HIDDEN_VIDEOS_KEY]?.videos || [];
-      if (!existing.find(v => v.id === message.video.id)) {
-        existing.push({ ...message.video, hiddenAt: Date.now() });
+      if (!existing.find(v => v.id === msg.video.id)) {
+        existing.push({ ...msg.video, hiddenAt: Date.now() });
       }
       chrome.storage.local.set({ [HIDDEN_VIDEOS_KEY]: { videos: existing } }, () => {
-        sendResponse({ ok: true });
+        send({ ok: true });
       });
     });
-    return true;
-  }
+  },
 
-  if (message.type === 'UNHIDE_VIDEO') {
+  UNHIDE_VIDEO(msg, send) {
     chrome.storage.local.get([HIDDEN_VIDEOS_KEY], result => {
       const existing = result[HIDDEN_VIDEOS_KEY]?.videos || [];
-      const filtered = existing.filter(v => v.id !== message.videoId);
+      const filtered = existing.filter(v => v.id !== msg.videoId);
       chrome.storage.local.set({ [HIDDEN_VIDEOS_KEY]: { videos: filtered } }, () => {
-        sendResponse({ ok: true });
+        send({ ok: true });
       });
     });
-    return true;
-  }
+  },
 
-  if (message.type === 'GET_PROGRESS') {
-    handleGetProgress(message.language || 'es', sendResponse);
-    return true; // keep channel open for async response
-  }
+  GET_PROGRESS(msg, send) {
+    handleGetProgress(msg.language || 'es', send);
+  },
 
-  if (message.type === 'CLEAR_CACHE') {
-    chrome.storage.local.remove(CACHE_KEY, () => sendResponse({ ok: true }));
-    return true;
-  }
+  CLEAR_CACHE(_msg, send) {
+    chrome.storage.local.remove(CACHE_KEY, () => send({ ok: true }));
+  },
 
-  if (message.type === 'SAVE_PROGRESS') {
+  SAVE_PROGRESS(msg, send) {
     const cacheEntry = {
-      data: message.data,
+      data: msg.data,
       timestamp: Date.now(),
-      language: message.language || 'es'
+      language: msg.language || 'es',
     };
-    chrome.storage.local.set({ [CACHE_KEY]: cacheEntry }, () => {
-      sendResponse({ ok: true });
-    });
-    return true;
-  }
+    chrome.storage.local.set({ [CACHE_KEY]: cacheEntry }, () => send({ ok: true }));
+  },
 
-  if (message.type === 'SHEETS_APPEND_BOOK') {
-    handleSheetsAppend(message.book, message.spreadsheetId, sendResponse);
-    return true; // keep channel open for async response
+  SHEETS_APPEND_BOOK(msg, send) {
+    handleSheetsAppend(msg.book, msg.spreadsheetId, send);
+  },
+};
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  const handler = messageHandlers[message?.type];
+  if (!handler) {
+    sendResponse({ ok: false, reason: `unknown_type:${message?.type}` });
+    return false;
   }
+  handler(message, sendResponse);
+  return true; // keep channel open for async response
 });
 
 async function handleGetProgress(language, sendResponse) {
@@ -202,10 +206,21 @@ async function getCachedFirefoxToken() {
   return null;
 }
 
-// Set badge to indicate extension is active on DS pages
+// Set/clear the badge as tabs navigate in or out of the DS hosts.
+const DS_HOSTS = new Set(['app.dreaming.com', 'app.dreamingspanish.com']);
+
+function isDreamingHost(url) {
+  if (!url) return false;
+  try { return DS_HOSTS.has(new URL(url).hostname); } catch { return false; }
+}
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (tab.url && tab.url.includes('dreaming')) {
+  // Only react when the URL or load state actually changed.
+  if (!changeInfo.url && changeInfo.status !== 'loading' && changeInfo.status !== 'complete') return;
+  if (isDreamingHost(tab.url)) {
     chrome.action.setBadgeBackgroundColor({ color: '#4CAF50', tabId });
     chrome.action.setBadgeText({ text: 'DS', tabId });
+  } else {
+    chrome.action.setBadgeText({ text: '', tabId });
   }
 });

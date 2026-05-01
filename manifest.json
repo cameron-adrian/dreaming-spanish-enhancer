@@ -1,7 +1,7 @@
 {
   "name": "Dreaming Spanish Enhancer",
   "description": "Progress bars and stats for your Dreaming Spanish journey. Track completion by country, guide, topic, and more.",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "manifest_version": 3,
   "icons": {
     "16": "images/icon-16.png",

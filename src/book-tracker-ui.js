@@ -242,8 +242,8 @@ const BookTrackerUI = {
 
     const updateEst = () => {
       if (wordCountInput.dataset.manual === 'true') return;
-      const pages = parseInt(pagesInput.value) || 0;
-      const wpp = parseInt(wppInput.value) || this.WORDS_PER_PAGE_DEFAULT;
+      const pages = parseInt(pagesInput.value, 10) || 0;
+      const wpp = parseInt(wppInput.value, 10) || this.WORDS_PER_PAGE_DEFAULT;
       const est = pages * wpp;
       wordCountInput.value = est > 0 ? est : '';
     };
@@ -364,13 +364,13 @@ const BookTrackerUI = {
     const searchQuery = card.querySelector('.ds-book-search-input').value.trim();
     const cleanQuery = searchQuery.replace(/[-\s]/g, '');
     const isbn = /^\d{10}$|^\d{13}$/.test(cleanQuery) ? cleanQuery : '';
-    const pages = parseInt(card.querySelector('.ds-book-pages-input').value) || 0;
-    const wpp = parseInt(card.querySelector('.ds-book-wpp-input').value) || this.WORDS_PER_PAGE_DEFAULT;
-    const manualWordCount = parseInt(card.querySelector('.ds-book-wordcount-input').value) || 0;
+    const pages = parseInt(card.querySelector('.ds-book-pages-input').value, 10) || 0;
+    const wpp = parseInt(card.querySelector('.ds-book-wpp-input').value, 10) || this.WORDS_PER_PAGE_DEFAULT;
+    const manualWordCount = parseInt(card.querySelector('.ds-book-wordcount-input').value, 10) || 0;
     const wordCount = manualWordCount > 0 ? manualWordCount : pages * wpp;
 
     const newBook = {
-      id: Date.now(),
+      id: crypto.randomUUID(),
       title,
       author,
       isbn,
