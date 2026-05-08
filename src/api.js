@@ -341,5 +341,39 @@ const DSApi = {
     }
 
     return Math.round((totalSeconds / 3600) * 10) / 10;
+  },
+
+  /**
+   * Compute the average watch seconds per weekday across all returned days.
+   * Returns a length-7 array indexed by Date.getDay() (0=Sun..6=Sat),
+   * or null if no data source.
+   */
+  async computeWeekdayAverages(language = 'es') {
+    const records = await this.fetchDailyActivity(language);
+    if (!records) return null;
+
+    const totals = [0, 0, 0, 0, 0, 0, 0];
+    const counts = [0, 0, 0, 0, 0, 0, 0];
+
+    for (const r of records) {
+      const dateStr = r.date || r.day || r.d || r.timestamp;
+      if (!dateStr) continue;
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) continue;
+
+      let seconds = 0;
+      if (typeof r.timeSeconds === 'number') seconds = r.timeSeconds;
+      else if (typeof r.seconds === 'number') seconds = r.seconds;
+      else if (typeof r.time === 'number') seconds = r.time;
+      else if (typeof r.watchTime === 'number') seconds = r.watchTime;
+      else if (typeof r.minutes === 'number') seconds = r.minutes * 60;
+      else if (typeof r.value === 'number') seconds = r.value;
+
+      const dow = date.getDay();
+      totals[dow] += seconds;
+      counts[dow] += 1;
+    }
+
+    return totals.map((t, i) => counts[i] > 0 ? t / counts[i] : 0);
   }
 };

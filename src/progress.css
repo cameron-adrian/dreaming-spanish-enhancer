@@ -1105,3 +1105,51 @@
   animation: ds-fade-out 0.3s forwards;
   pointer-events: none;
 }
+
+/* ---- Weekday Averages Block (under "Your Activity" calendar) ---- */
+
+.ds-weekday-averages {
+  --ds-bg-base-fallback: #f3f2f7;
+  --ds-text-fallback: #272d37;
+  --ds-text-muted-fallback: #adb9c7;
+  --ds-border-light-fallback: #eef2f6;
+
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.ds-weekday-averages.ds-dark {
+  --ds-bg-base-fallback: #121212;
+  --ds-text-fallback: #ffffff;
+  --ds-text-muted-fallback: #66737f;
+  --ds-border-light-fallback: #282828;
+}
+
+.ds-weekday-cell {
+  --ds-intensity: 0;
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: 8px;
+  background: rgba(255, 147, 1, var(--ds-intensity));
+  border: 1px solid var(--ds-border-light, var(--ds-border-light-fallback));
+  transition: background 0.2s ease;
+}
+
+.ds-weekday-cell-label {
+  display: block;
+  font-size: 11px;
+  color: var(--ds-text-muted, var(--ds-text-muted-fallback));
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ds-weekday-cell-value {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ds-text, var(--ds-text-fallback));
+  margin-top: 4px;
+}

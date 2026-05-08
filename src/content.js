@@ -10,6 +10,7 @@
   const BOOK_CARD_ID = 'ds-book-tracker-card';
   const HIDDEN_SECTION_ID = 'ds-hidden-section';
   const HOURS_YEAR_TILE_ID = 'ds-hours-this-year-tile';
+  const WEEKDAY_AVG_ID = 'ds-weekday-averages';
   let progressData = null;
   let isLoading = false;
   let lastPath = null;
@@ -28,9 +29,11 @@
       progressData = null;
       waitForGridAndInject();
       waitForActivityTileAndInject();
+      waitForActivityCalendarAndInject();
     } else {
       removeCard();
       removeHoursThisYearTile();
+      removeWeekdayAveragesBlock();
     }
 
     if (isLibraryPage()) {
@@ -297,6 +300,146 @@
         injectHoursThisYearTile();
       } else {
         console.warn('[DS Enhancer] Hours-this-month tile not found after 15s; skipping yearly tile');
+      }
+    }, 15000);
+  }
+
+  // ---- Weekday Averages Block (under the native "Your Activity" calendar) ----
+
+  function findActivityCalendar() {
+    // Strategy 1: explicit DS data-testid (preferred when DS exposes one)
+    for (const sel of [
+      '[data-testid="activity-calendar"]',
+      '[data-testid="your-activity"]',
+      '[data-testid*="activity-calendar" i]',
+      '[data-testid*="streak-calendar" i]',
+    ]) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+
+    // Strategy 2: heading-based — find an h2/h3 whose text matches and
+    // return the surrounding card container.
+    const headings = document.querySelectorAll('h1, h2, h3, h4');
+    for (const h of headings) {
+      const text = (h.textContent || '').trim().toLowerCase();
+      if (text === 'your activity' || text === 'activity') {
+        // Walk up to a card-ish ancestor
+        const card = h.closest('.ds-card, .ds-mini-card, [class*="card" i], section, article');
+        if (card) return card;
+        return h.parentElement;
+      }
+    }
+
+    // Strategy 3: class-based fallbacks
+    for (const sel of [
+      '.ds-activity-calendar',
+      '[class*="activity-calendar" i]',
+      '[class*="streak-calendar" i]',
+    ]) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+
+    return null;
+  }
+
+  function removeWeekdayAveragesBlock() {
+    const b = document.getElementById(WEEKDAY_AVG_ID);
+    if (b) b.remove();
+  }
+
+  function buildWeekdayAveragesBlock() {
+    const block = document.createElement('div');
+    block.id = WEEKDAY_AVG_ID;
+    block.className = 'ds-weekday-averages';
+    if (isDarkMode()) block.classList.add('ds-dark');
+
+    const labels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const fullLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    for (let i = 0; i < 7; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'ds-weekday-cell';
+      cell.dataset.dow = String(i);
+      cell.title = `${fullLabels[i]} — average input time (all time)`;
+      cell.innerHTML = `
+        <span class="ds-weekday-cell-label">${labels[i]}</span>
+        <span class="ds-weekday-cell-value">…</span>
+      `;
+      block.appendChild(cell);
+    }
+    return block;
+  }
+
+  function applyWeekdayAverages(block, averages) {
+    if (!Array.isArray(averages) || averages.length !== 7) return;
+    const max = Math.max(...averages);
+    const cells = block.querySelectorAll('.ds-weekday-cell');
+    cells.forEach((cell, i) => {
+      const avgSec = averages[i] || 0;
+      const ratio = max > 0 ? avgSec / max : 0;
+      const intensity = avgSec === 0 ? 0 : 0.08 + 0.72 * ratio;
+      cell.style.setProperty('--ds-intensity', intensity.toFixed(3));
+      const valueEl = cell.querySelector('.ds-weekday-cell-value');
+      if (valueEl) valueEl.textContent = ProgressUI.formatDuration(avgSec);
+    });
+  }
+
+  async function injectWeekdayAveragesBlock() {
+    if (document.getElementById(WEEKDAY_AVG_ID)) return;
+
+    const calendar = findActivityCalendar();
+    if (!calendar) return;
+
+    const block = buildWeekdayAveragesBlock();
+
+    // Place the block at the end of the activity card if we resolved to a
+    // card container, otherwise drop it directly after the calendar element.
+    const isCard = calendar.matches?.('.ds-card, .ds-mini-card, [class*="card" i], section, article');
+    if (isCard) calendar.appendChild(block);
+    else calendar.insertAdjacentElement('afterend', block);
+
+    try {
+      const averages = await DSApi.computeWeekdayAverages();
+      const live = document.getElementById(WEEKDAY_AVG_ID);
+      if (!live) return;
+      if (!averages) {
+        console.warn('[DS Enhancer] Could not compute weekday averages; removing block');
+        live.remove();
+        return;
+      }
+      applyWeekdayAverages(live, averages);
+    } catch (err) {
+      console.error('[DS Enhancer] Weekday averages computation failed:', err);
+      document.getElementById(WEEKDAY_AVG_ID)?.remove();
+    }
+  }
+
+  function waitForActivityCalendarAndInject() {
+    if (document.getElementById(WEEKDAY_AVG_ID)) return;
+
+    if (findActivityCalendar()) {
+      injectWeekdayAveragesBlock();
+      return;
+    }
+
+    const observer = new MutationObserver(() => {
+      if (!isProgressPage()) { observer.disconnect(); return; }
+      if (document.getElementById(WEEKDAY_AVG_ID)) { observer.disconnect(); return; }
+      if (findActivityCalendar()) {
+        observer.disconnect();
+        injectWeekdayAveragesBlock();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    setTimeout(() => {
+      observer.disconnect();
+      if (document.getElementById(WEEKDAY_AVG_ID) || !isProgressPage()) return;
+      if (findActivityCalendar()) {
+        injectWeekdayAveragesBlock();
+      } else {
+        console.warn('[DS Enhancer] Activity calendar not found after 15s; skipping weekday averages');
       }
     }, 15000);
   }
