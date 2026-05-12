@@ -7,17 +7,16 @@ const DS_API = (typeof location !== 'undefined' && location.hostname === 'app.dr
   ? 'https://app.dreamingspanish.com/.netlify/functions'
   : 'https://app.dreaming.com/.netlify/functions';
 
+// Known DS auth-token storage keys, in priority order. Avoid scanning all of
+// localStorage for anything JWT-shaped — that risks forwarding unrelated
+// third-party tokens to the DS API.
+const DS_TOKEN_KEYS = ['token', 'accessToken', 'auth_token', 'authToken', 'ds_token'];
+
 const DSApi = {
   getToken() {
-    const token = localStorage.getItem('token');
-    if (token) return token.replace(/^["']|["']$/g, '');
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      const val = localStorage.getItem(key);
-      if (val && val.startsWith('eyJ') && val.includes('.')) {
-        return val.replace(/^["']|["']$/g, '');
-      }
+    for (const key of DS_TOKEN_KEYS) {
+      const raw = localStorage.getItem(key);
+      if (raw) return raw.replace(/^["']|["']$/g, '');
     }
     return null;
   },
@@ -58,8 +57,8 @@ const DSApi = {
     const [videosResp, watchedResp, userResp, seriesResp] = await Promise.all([
       this.fetch('videos', { language }),
       this.fetch('watchedVideo', { language }),
-      this.fetch('user', { timezone: '0' }).catch(() => null),
-      this.fetch('series', { language }).catch(() => null),
+      this.fetch('user', { timezone: '0' }).catch(e => { console.warn('[DS Enhancer] user fetch failed:', e.message); return null; }),
+      this.fetch('series', { language }).catch(e => { console.warn('[DS Enhancer] series fetch failed:', e.message); return null; }),
     ]);
 
     if (!videosResp || !watchedResp) {
@@ -90,6 +89,35 @@ const DSApi = {
       topic: {},
     };
 
+    // Index: catType -> label -> Video[]. Built in this same pass so
+    // computeAlmostDone can look up label members in O(1) instead of
+    // rescanning all videos per label.
+    const videosByLabel = {
+      guide: new Map(),
+      level: new Map(),
+      topic: new Map(),
+      series: new Map(),
+    };
+
+    const addToIndex = (catType, label, video) => {
+      const bucket = videosByLabel[catType];
+      const list = bucket.get(label);
+      if (list) list.push(video);
+      else bucket.set(label, [video]);
+    };
+
+    const bumpStats = (catBucket, label, durationHours, isWatched) => {
+      let s = catBucket[label];
+      if (!s) {
+        s = { total: 0, watched: 0, count: 0, watchedCount: 0 };
+        catBucket[label] = s;
+      }
+      s.total += durationHours;
+      s.watched += isWatched ? durationHours : 0;
+      s.count += 1;
+      if (isWatched) s.watchedCount += 1;
+    };
+
     // Only add series tab if videos actually use series
     let hasAnySeries = false;
 
@@ -97,42 +125,24 @@ const DSApi = {
       const durationHours = (video.duration || 0) / 3600;
       const watchInfo = watchedMap.get(video._id);
       const isWatched = watchInfo?.watched === true;
-      const watchedHours = isWatched ? durationHours : 0;
 
       // Group by guide(s)
-      const guides = video.guides || [];
-      for (const guide of guides) {
-        if (!categories.guide[guide]) {
-          categories.guide[guide] = { total: 0, watched: 0, count: 0, watchedCount: 0 };
-        }
-        categories.guide[guide].total += durationHours;
-        categories.guide[guide].watched += watchedHours;
-        categories.guide[guide].count += 1;
-        categories.guide[guide].watchedCount += isWatched ? 1 : 0;
+      for (const guide of video.guides || []) {
+        bumpStats(categories.guide, guide, durationHours, isWatched);
+        addToIndex('guide', guide, video);
       }
 
       // Group by level
       const level = video.level || 'unknown';
       const levelLabel = level.charAt(0).toUpperCase() + level.slice(1);
-      if (!categories.level[levelLabel]) {
-        categories.level[levelLabel] = { total: 0, watched: 0, count: 0, watchedCount: 0 };
-      }
-      categories.level[levelLabel].total += durationHours;
-      categories.level[levelLabel].watched += watchedHours;
-      categories.level[levelLabel].count += 1;
-      categories.level[levelLabel].watchedCount += isWatched ? 1 : 0;
+      bumpStats(categories.level, levelLabel, durationHours, isWatched);
+      addToIndex('level', levelLabel, video);
 
       // Group by topic/tag
-      const tags = video.tags || [];
-      for (const tag of tags) {
+      for (const tag of video.tags || []) {
         const tagLabel = tag.charAt(0).toUpperCase() + tag.slice(1).replace(/-/g, ' ');
-        if (!categories.topic[tagLabel]) {
-          categories.topic[tagLabel] = { total: 0, watched: 0, count: 0, watchedCount: 0 };
-        }
-        categories.topic[tagLabel].total += durationHours;
-        categories.topic[tagLabel].watched += watchedHours;
-        categories.topic[tagLabel].count += 1;
-        categories.topic[tagLabel].watchedCount += isWatched ? 1 : 0;
+        bumpStats(categories.topic, tagLabel, durationHours, isWatched);
+        addToIndex('topic', tagLabel, video);
       }
 
       // Group by series (if applicable)
@@ -140,13 +150,8 @@ const DSApi = {
         hasAnySeries = true;
         const seriesName = seriesMap.get(video.seriesId) || 'Unknown Series';
         if (!categories.series) categories.series = {};
-        if (!categories.series[seriesName]) {
-          categories.series[seriesName] = { total: 0, watched: 0, count: 0, watchedCount: 0 };
-        }
-        categories.series[seriesName].total += durationHours;
-        categories.series[seriesName].watched += watchedHours;
-        categories.series[seriesName].count += 1;
-        categories.series[seriesName].watchedCount += isWatched ? 1 : 0;
+        bumpStats(categories.series, seriesName, durationHours, isWatched);
+        addToIndex('series', seriesName, video);
       }
     }
 
@@ -154,7 +159,7 @@ const DSApi = {
     if (!hasAnySeries) delete categories.series;
 
     // Build "Almost Done" data
-    const almostDone = this.computeAlmostDone(videos, watchedMap, categories, seriesMap);
+    const almostDone = this.computeAlmostDone(videos, watchedMap, categories, videosByLabel);
 
     // Attach user stats for the popup
     const fullyWatched = watchedVideos.filter(w => w.watched).length;
@@ -175,7 +180,7 @@ const DSApi = {
    * 1. sectionCompleters: sections with only a few unwatched videos left, plus those videos
    * 2. nearlyFinished: partially-watched videos sorted by in-video progress (closest to 100%)
    */
-  computeAlmostDone(videos, watchedMap, categories, seriesMap) {
+  computeAlmostDone(videos, watchedMap, categories, videosByLabel) {
     // --- Nearly Finished: videos with partial progress ---
     const nearlyFinished = [];
     for (const video of videos) {
@@ -183,21 +188,7 @@ const DSApi = {
       if (!watchInfo) continue;
       if (watchInfo.watched === true) continue; // fully watched, skip
 
-      // Try to get partial progress from various possible API fields
-      let progress = 0;
-      if (typeof watchInfo.watchPosition === 'number' && watchInfo.watchPosition > 0 && video.duration > 0) {
-        progress = watchInfo.watchPosition / video.duration;
-      } else if (typeof watchInfo.progress === 'number') {
-        progress = watchInfo.progress; // 0-1 or 0-100
-        if (progress > 1) progress = progress / 100; // normalize to 0-1
-      } else if (typeof watchInfo.currentTime === 'number' && video.duration > 0) {
-        progress = watchInfo.currentTime / video.duration;
-      } else if (typeof watchInfo.watchedTime === 'number' && video.duration > 0) {
-        progress = watchInfo.watchedTime / video.duration;
-      } else if (typeof watchInfo.secondsWatched === 'number' && video.duration > 0) {
-        progress = watchInfo.secondsWatched / video.duration;
-      }
-
+      const progress = this._extractProgress(watchInfo, video.duration || 0);
       if (progress > 0 && progress < 1) {
         nearlyFinished.push({
           id: video._id,
@@ -219,53 +210,32 @@ const DSApi = {
     const sectionCompleters = [];
     const MAX_REMAINING = 3; // sections with at most this many unwatched videos
 
-    // Build a map of videos per category label for lookups
     const catTypes = ['guide', 'level', 'topic'];
     if (categories.series) catTypes.push('series');
 
     for (const catType of catTypes) {
       const labels = categories[catType];
       if (!labels) continue;
+      const labelIndex = videosByLabel[catType];
+      if (!labelIndex) continue;
 
       for (const [label, stats] of Object.entries(labels)) {
         const remaining = stats.count - stats.watchedCount;
         if (remaining < 1 || remaining > MAX_REMAINING) continue;
-        // Already complete
         if (stats.watched >= stats.total) continue;
 
-        // Find the actual unwatched videos for this label
+        const labelVideos = labelIndex.get(label) || [];
         const unwatchedVideos = [];
-        for (const video of videos) {
-          // Check if video belongs to this category label
-          let belongs = false;
-          if (catType === 'guide') {
-            belongs = (video.guides || []).includes(label);
-          } else if (catType === 'level') {
-            const lvl = (video.level || '').charAt(0).toUpperCase() + (video.level || '').slice(1);
-            belongs = lvl === label;
-          } else if (catType === 'topic') {
-            belongs = (video.tags || []).some(t => {
-              const tagLabel = t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, ' ');
-              return tagLabel === label;
-            });
-          } else if (catType === 'series') {
-            belongs = seriesMap.get(video.seriesId) === label;
-          }
-
-          if (!belongs) continue;
-
-          const watchInfo = watchedMap.get(video._id);
-          const isWatched = watchInfo?.watched === true;
-          if (!isWatched) {
-            unwatchedVideos.push({
-              id: video._id,
-              slug: video.slug || video.path || video._id || '',
-              title: video.title || 'Untitled',
-              duration: video.duration || 0,
-              level: video.level || '',
-              difficultyScore: video.difficultyScore || 0,
-            });
-          }
+        for (const video of labelVideos) {
+          if (watchedMap.get(video._id)?.watched === true) continue;
+          unwatchedVideos.push({
+            id: video._id,
+            slug: video.slug || video.path || video._id || '',
+            title: video.title || 'Untitled',
+            duration: video.duration || 0,
+            level: video.level || '',
+            difficultyScore: video.difficultyScore || 0,
+          });
         }
 
         if (unwatchedVideos.length > 0 && unwatchedVideos.length <= MAX_REMAINING) {
@@ -287,6 +257,23 @@ const DSApi = {
     sectionCompleters.sort((a, b) => a.remaining - b.remaining || b.percent - a.percent);
 
     return { sectionCompleters, nearlyFinished };
+  },
+
+  /** The DS API has used several field names for in-video progress; pick whichever is present. */
+  _extractProgress(watchInfo, duration) {
+    if (typeof watchInfo.watchPosition === 'number' && watchInfo.watchPosition > 0 && duration > 0) {
+      return watchInfo.watchPosition / duration;
+    }
+    if (typeof watchInfo.progress === 'number') {
+      const p = watchInfo.progress;
+      return p > 1 ? p / 100 : p; // normalize 0-100 to 0-1
+    }
+    if (duration > 0) {
+      for (const k of ['currentTime', 'watchedTime', 'secondsWatched']) {
+        if (typeof watchInfo[k] === 'number') return watchInfo[k] / duration;
+      }
+    }
+    return 0;
   },
 
   /**

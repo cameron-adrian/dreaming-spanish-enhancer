@@ -10,11 +10,40 @@
   const BOOK_CARD_ID = 'ds-book-tracker-card';
   const HIDDEN_SECTION_ID = 'ds-hidden-section';
   const HOURS_YEAR_TILE_ID = 'ds-hours-this-year-tile';
+  const WAIT_TIMEOUT_MS = 15000;
   let progressData = null;
-  let isLoading = false;
+  let inflightFetch = null;
   let lastPath = null;
   let _lastClickedCard = null; // captured on mousedown for portal-menu fallback
   let menuObserver = null;
+  let menuScanScheduled = false;
+
+  // ---- Generic wait-for-element helper ----
+
+  /**
+   * Wait for `check()` to return a truthy value, then call `onFound(result)`.
+   * Stops after 15s, or as soon as `isStillValid()` returns false. Replaces
+   * three near-identical MutationObserver setups that each had their own
+   * disconnect/timeout boilerplate.
+   */
+  function waitForElement(check, onFound, isStillValid = () => true) {
+    const initial = check();
+    if (initial) { onFound(initial); return; }
+
+    const observer = new MutationObserver(() => {
+      if (!isStillValid()) { observer.disconnect(); return; }
+      const result = check();
+      if (result) { observer.disconnect(); onFound(result); }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    setTimeout(() => {
+      observer.disconnect();
+      if (!isStillValid()) return;
+      const result = check();
+      if (result) onFound(result);
+    }, WAIT_TIMEOUT_MS);
+  }
 
   // ---- SPA Navigation Detection ----
 
@@ -42,7 +71,6 @@
 
     // Hide any video cards that are in the hidden list
     applyHidingToPage();
-    setTimeout(applyHidingToPage, 600);
   }
 
   function isProgressPage() {
@@ -101,44 +129,16 @@
     const missing = missingCards();
     if (!missing.stats && !missing.book) return;
 
-    const grid = findGridContainer();
-    if (grid) {
-      injectMissingCards(grid, missing);
-      return;
-    }
-
-    const observer = new MutationObserver(() => {
-      if (!isProgressPage()) {
-        observer.disconnect();
-        return;
-      }
-      const m = missingCards();
-      if (!m.stats && !m.book) {
-        observer.disconnect();
-        return;
-      }
-      const g = findGridContainer();
-      if (g) {
-        observer.disconnect();
-        injectMissingCards(g, m);
-      }
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    // Safety timeout — stop observing after 15s
-    setTimeout(() => {
-      observer.disconnect();
-      const m = missingCards();
-      if ((m.stats || m.book) && isProgressPage()) {
-        const g = findGridContainer();
-        if (g) {
-          injectMissingCards(g, m);
-        } else {
-          console.warn('[DS Enhancer] Grid not found after 15s timeout');
-        }
-      }
-    }, 15000);
+    waitForElement(
+      () => {
+        const m = missingCards();
+        if (!m.stats && !m.book) return null;
+        const grid = findGridContainer();
+        return grid ? { grid, missing: m } : null;
+      },
+      ({ grid, missing: m }) => injectMissingCards(grid, m),
+      isProgressPage,
+    );
   }
 
   async function injectCard(gridContainer) {
@@ -274,31 +274,11 @@
 
   function waitForActivityTileAndInject() {
     if (document.getElementById(HOURS_YEAR_TILE_ID)) return;
-
-    if (findHoursThisMonthTile()) {
-      injectHoursThisYearTile();
-      return;
-    }
-
-    const observer = new MutationObserver(() => {
-      if (!isProgressPage()) { observer.disconnect(); return; }
-      if (document.getElementById(HOURS_YEAR_TILE_ID)) { observer.disconnect(); return; }
-      if (findHoursThisMonthTile()) {
-        observer.disconnect();
-        injectHoursThisYearTile();
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    setTimeout(() => {
-      observer.disconnect();
-      if (document.getElementById(HOURS_YEAR_TILE_ID) || !isProgressPage()) return;
-      if (findHoursThisMonthTile()) {
-        injectHoursThisYearTile();
-      } else {
-        console.warn('[DS Enhancer] Hours-this-month tile not found after 15s; skipping yearly tile');
-      }
-    }, 15000);
+    waitForElement(
+      () => document.getElementById(HOURS_YEAR_TILE_ID) ? null : findHoursThisMonthTile(),
+      () => injectHoursThisYearTile(),
+      isProgressPage,
+    );
   }
 
   // ---- Library Page: Hidden Videos Section ----
@@ -314,21 +294,11 @@
 
   function waitForLibraryAndInject() {
     if (document.getElementById(HIDDEN_SECTION_ID)) return;
-
-    const container = findLibraryContainer();
-    if (container) {
-      injectHiddenSection(container);
-      return;
-    }
-
-    const obs = new MutationObserver(() => {
-      if (!isLibraryPage()) { obs.disconnect(); return; }
-      if (document.getElementById(HIDDEN_SECTION_ID)) { obs.disconnect(); return; }
-      const c = findLibraryContainer();
-      if (c) { obs.disconnect(); injectHiddenSection(c); }
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
-    setTimeout(() => obs.disconnect(), 15000);
+    waitForElement(
+      () => document.getElementById(HIDDEN_SECTION_ID) ? null : findLibraryContainer(),
+      container => injectHiddenSection(container),
+      isLibraryPage,
+    );
   }
 
   async function injectHiddenSection(container) {
@@ -349,21 +319,40 @@
     const hiddenIds = new Set((resp.videos || []).map(v => v.id));
     if (hiddenIds.size === 0) return;
 
-    const cards = document.querySelectorAll('.ds-catalog-video-card');
-    cards.forEach(card => {
-      // Skip cards inside our own injected section
-      if (card.closest('#ds-hidden-section')) return;
-      const data = HideVideoUI.extractVideoData(card);
-      if (data.id && hiddenIds.has(data.id)) {
-        card.style.display = 'none';
-      }
-    });
+    const hideMatching = () => {
+      document.querySelectorAll('.ds-catalog-video-card').forEach(card => {
+        if (card.closest('#ds-hidden-section')) return;
+        const data = HideVideoUI.extractVideoData(card);
+        if (data.id && hiddenIds.has(data.id)) {
+          card.style.display = 'none';
+        }
+      });
+    };
+
+    hideMatching();
+    // On SPA navigation, cards may render after this initial pass; wait for
+    // the first one to appear and re-apply once. Replaces a magic 600ms timer.
+    if (!document.querySelector('.ds-catalog-video-card')) {
+      waitForElement(
+        () => document.querySelector('.ds-catalog-video-card'),
+        hideMatching,
+      );
+    }
   }
 
   // ---- 3-Dots Menu Detection & Injection ----
 
   // Known labels that appear in the DS video options dropdown
   const MENU_LABELS = ['Download', 'Share', 'Add to my list', 'Mark as watched'];
+
+  function scheduleMenuScan() {
+    if (menuScanScheduled) return;
+    menuScanScheduled = true;
+    requestAnimationFrame(() => {
+      menuScanScheduled = false;
+      scanForMenuAndInject();
+    });
+  }
 
   function initMenuObserver() {
     // Track any mousedown inside a video card so we know which card a menu belongs to
@@ -375,8 +364,8 @@
     }, true);
 
     // PRIMARY: After a click on a video card, poll for a visible dropdown menu.
-    // This handles menus that are pre-rendered but toggled via CSS (display/visibility/opacity),
-    // which a childList MutationObserver would never detect.
+    // This handles menus that are pre-rendered but toggled via CSS
+    // (display/visibility/opacity), which a childList MutationObserver misses.
     document.addEventListener('click', e => {
       const card = e.target.closest(
         '.ds-catalog-video-card, [class*="catalog-video-card"], [class*="video-card"]'
@@ -387,11 +376,11 @@
       }
     }, true);
 
-    // SECONDARY: MutationObserver for menus that are dynamically added to the DOM
-    menuObserver = new MutationObserver(() => {
-      setTimeout(scanForMenuAndInject, 0);
-    });
-    menuObserver.observe(document.body, { childList: true, subtree: true });
+    // SECONDARY: watch only direct children of body for React-portal additions,
+    // debounced via rAF. Avoids the previous subtree observer that ran a full
+    // selector sweep on every DOM mutation across the page.
+    menuObserver = new MutationObserver(scheduleMenuScan);
+    menuObserver.observe(document.body, { childList: true });
   }
 
   function scanForMenuAndInject() {
@@ -493,37 +482,46 @@
 
   // ---- Data Fetching ----
 
+  function detectLanguage() {
+    const seg = (location.pathname.split('/')[1] || '').toLowerCase();
+    // DS uses English path segments like /spanish, /french, ... map a few we know.
+    const map = { spanish: 'es', french: 'fr', german: 'de', italian: 'it', portuguese: 'pt' };
+    return map[seg] || 'es';
+  }
+
   async function fetchData() {
-    if (isLoading) return;
-    isLoading = true;
+    // Share the in-flight promise so concurrent callers all see the result
+    // instead of silently no-op'ing.
+    if (inflightFetch) return inflightFetch;
 
-    try {
-      const token = DSApi.getToken();
-      if (!token) return;
-
-      // Check cache first
+    inflightFetch = (async () => {
       try {
-        const cached = await sendMessage({ type: 'GET_PROGRESS' });
-        if (cached.ok && cached.data &&
-            Object.keys(cached.data).filter(k => !k.startsWith('_')).length > 0 &&
-            cached.data._almostDone) {
-          progressData = cached.data;
-          return;
-        }
-      } catch (e) { /* cache unavailable */ }
+        const token = DSApi.getToken();
+        if (!token) return;
 
-      progressData = await DSApi.computeProgress();
+        const language = detectLanguage();
 
-      sendMessage({
-        type: 'SAVE_PROGRESS',
-        data: progressData,
-        language: 'es'
-      });
-    } catch (err) {
-      console.error('[DS Enhancer] Failed to load progress:', err);
-    } finally {
-      isLoading = false;
-    }
+        try {
+          const cached = await sendMessage({ type: 'GET_PROGRESS', language });
+          if (cached.ok && cached.data &&
+              Object.keys(cached.data).filter(k => !k.startsWith('_')).length > 0 &&
+              cached.data._almostDone) {
+            progressData = cached.data;
+            return;
+          }
+        } catch (e) { /* cache unavailable */ }
+
+        progressData = await DSApi.computeProgress(language);
+
+        sendMessage({ type: 'SAVE_PROGRESS', data: progressData, language });
+      } catch (err) {
+        console.error('[DS Enhancer] Failed to load progress:', err);
+      } finally {
+        inflightFetch = null;
+      }
+    })();
+
+    return inflightFetch;
   }
 
   // ---- Theme Detection ----
@@ -579,6 +577,8 @@
   patchHistory();
   onRouteChange();
   initMenuObserver();
+  // applyHidingToPage is also invoked from onRouteChange above; calling it
+  // here covers the initial load. It now waits for video cards itself, so
+  // the prior 600ms re-trigger is no longer needed.
   applyHidingToPage();
-  setTimeout(applyHidingToPage, 600);
 })();
