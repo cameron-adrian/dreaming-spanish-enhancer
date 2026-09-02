@@ -10,5 +10,16 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "cameron-house": {
+      "source": {
+        "source": "github",
+        "repo": "cameron-adrian/claude-config"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "house@cameron-house": true
   }
 }
