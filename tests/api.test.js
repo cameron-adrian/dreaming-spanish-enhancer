@@ -36,6 +36,11 @@ test('getToken returns null when nothing JWT-shaped is stored', () => {
   assert.equal(DSApi.getToken(), null);
 });
 
+test('getToken only reads known DS keys, never another JWT that happens to be stored', () => {
+  const { DSApi } = loadApi({ storage: { some_widget_jwt: 'eyJother.party.token' } });
+  assert.equal(DSApi.getToken(), null);
+});
+
 test('fetch sends the bearer token to the matching DS host', async () => {
   const { DSApi, fetch } = loadApi({ routes: { user: fx.user }, hostname: 'app.dreamingspanish.com' });
   await DSApi.fetch('user', { timezone: '0' });
