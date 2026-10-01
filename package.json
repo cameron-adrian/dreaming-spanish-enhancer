@@ -1,0 +1,11 @@
+{
+  "name": "dreaming-spanish-enhancer",
+  "private": true,
+  "description": "Test runner only; the extension itself has no build step or dependencies.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
