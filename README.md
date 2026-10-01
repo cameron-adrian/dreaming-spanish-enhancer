@@ -42,6 +42,8 @@ On **Progress → Time outside**, an import card turns a podcast listening histo
 - Spanish shows are pre-ticked; your show choices are remembered
 - One DS entry per day and show, written like a hand-typed entry (`Show:` then one episode per
   line), time rounded to whole minutes; listens before 4am count toward the previous day, as on DS
+- **Attention %** — count only part of the listened time (e.g. 90% if you were half-distracted);
+  applied to each entry before rounding, and remembered for next time
 - **Duplicate check** — every episode is listed with a status before anything is posted:
   - *Already imported*: imported before (local log, or its title is already in a DS entry)
   - *Logged by hand*: matches an entry you typed yourself — show nickname or initials

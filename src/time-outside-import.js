@@ -470,8 +470,11 @@ const TimeOutsideImport = {
    * Group selected episodes into one DS entry per day + show, formatted like
    * hand-typed entries ("Show:\n\nEpisode\nEpisode"). Time is summed first and
    * rounded to whole minutes once; groups under 30 seconds are dropped.
+   * `percent` (1–100) credits only that share of the listened time, applied to
+   * each entry before rounding.
    */
-  buildEntries(episodes, { type = 'listening' } = {}) {
+  buildEntries(episodes, { type = 'listening', percent = 100 } = {}) {
+    const share = this.clampPercent(percent) / 100;
     const groups = new Map();
     for (const ep of episodes) {
       if (!ep.selected || ep.error) continue;
@@ -484,7 +487,7 @@ const TimeOutsideImport = {
     }
     const entries = [];
     for (const g of groups.values()) {
-      const timeSeconds = Math.round(g.seconds / 60) * 60;
+      const timeSeconds = Math.round((g.seconds * share) / 60) * 60;
       if (timeSeconds <= 0) continue;
       const description = g.show
         ? `${g.show}:\n\n${g.titles.join('\n')}`.trim()
@@ -492,5 +495,13 @@ const TimeOutsideImport = {
       entries.push({ date: g.date, timeSeconds, description, type, keys: g.keys });
     }
     return entries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  },
+
+  /** Whole percent between 1 and 100; anything unreadable means 100. */
+  clampPercent(value) {
+    if (value == null || String(value).trim() === '') return 100;
+    const n = Math.round(Number(value));
+    if (!Number.isFinite(n)) return 100;
+    return Math.min(100, Math.max(1, n));
   },
 };

@@ -8,6 +8,7 @@
 const TimeOutsideUI = {
   LOG_KEY: 'ds_time_outside_imports',
   SHOWS_KEY: 'ds_time_outside_shows',
+  PERCENT_KEY: 'ds_time_outside_percent',
   ROLE_LABELS: { date: 'Date', start: 'Start time', end: 'End time', duration: 'Time listened', show: 'Show', title: 'Episode' },
   STATUS_LABELS: {
     new: 'New', weak: 'Check', manual: 'Logged by hand', imported: 'Already imported',
@@ -91,6 +92,7 @@ const TimeOutsideUI = {
       state.existing = await DSApi.getExternalTimes(state.language);
       state.importedKeys = this.importedKeys(await this.loadLog(), state.existing, state.language);
       state.showPrefs = await this.storageGet(this.SHOWS_KEY, {});
+      state.percent = TimeOutsideImport.clampPercent(await this.storageGet(this.PERCENT_KEY, 100));
       state.fileName = file.name;
       this.recompute(card);
     } catch (e) {
@@ -128,8 +130,11 @@ const TimeOutsideUI = {
     const state = card._toi;
     const T = TimeOutsideImport;
     const active = this.activeEpisodes(state);
-    const entries = T.buildEntries(active);
+    const entries = T.buildEntries(active, { percent: state.percent });
     const totalSec = entries.reduce((s, e) => s + e.timeSeconds, 0);
+    const fullSec = state.percent < 100
+      ? T.buildEntries(active).reduce((s, e) => s + e.timeSeconds, 0)
+      : totalSec;
     const counts = {};
     active.forEach(ep => { counts[ep.status] = (counts[ep.status] || 0) + 1; });
     const hours = s => (s / 3600).toFixed(1);
@@ -184,6 +189,10 @@ const TimeOutsideUI = {
       <div class="ds-toi-summary">
         <strong>${entries.length}</strong> entries · <strong>${hours(totalSec)} h</strong>
         <span class="ds-toi-muted">from ${active.filter(e => e.selected).length} episodes, one entry per day and show</span>
+        <label class="ds-toi-percent">
+          Count <input type="number" class="ds-toi-percent-input" min="1" max="100" step="1" value="${state.percent}">% of listened time
+          ${state.percent < 100 ? `<span class="ds-toi-muted">(${hours(fullSec)} h listened → ${hours(totalSec)} h credited)</span>` : ''}
+        </label>
         ${dupCount ? `<div class="ds-toi-dupnote">${dupCount} episode${dupCount === 1 ? '' : 's'} already on DS or repeated — unticked. Tick any you still want to add.</div>` : ''}
         ${counts.weak ? `<div class="ds-toi-dupnote">${counts.weak} marked “Check”: same show logged within a day, but nothing else matched. Still ticked.</div>` : ''}
       </div>
@@ -223,6 +232,13 @@ const TimeOutsideUI = {
       state.confirm = false;
       this.renderReview(card);
     }));
+    // 'change' (Enter or leaving the box), not 'input' — a re-render mid-typing would drop focus.
+    b.querySelector('.ds-toi-percent-input').addEventListener('change', e => {
+      state.percent = TimeOutsideImport.clampPercent(e.target.value);
+      this.storageSet(this.PERCENT_KEY, state.percent);
+      state.confirm = false;
+      this.renderReview(card);
+    });
     b.querySelector('.ds-toi-cancel')?.addEventListener('click', () => {
       state.confirm = false;
       this.renderReview(card);
@@ -241,7 +257,7 @@ const TimeOutsideUI = {
     const status = b.querySelector('.ds-toi-status');
 
     const log = await this.loadLog();
-    const record = { at: new Date().toISOString(), language: state.language, file: state.fileName, entries: [] };
+    const record = { at: new Date().toISOString(), language: state.language, file: state.fileName, percent: state.percent, entries: [] };
     log.push(record);
 
     let failure = null;

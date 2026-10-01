@@ -196,3 +196,26 @@ test('entries are one per day and show, in the hand-typed format, rounded to who
   assert.deepEqual(plain(entries.map(e => e.date)), plain([...entries.map(e => e.date)].sort()));
   assert.ok(!entries.some(e => e.description.includes('Broken row')));
 });
+
+test('an attention percentage scales each entry before rounding', () => {
+  const out = T.classifyDuplicates(load().episodes, [], new Set());
+  const full = T.buildEntries(out);
+  const ninety = T.buildEntries(out, { percent: 90 });
+
+  // 30:15 × 0.9 = 27:13.5 → 27 minutes
+  assert.equal(ninety.find(e => e.date === '2026-05-30').timeSeconds, 27 * 60);
+  // Same entries, descriptions and dedupe keys — only the time changes.
+  assert.deepEqual(plain(ninety.map(e => [e.date, e.description, e.keys])), plain(full.map(e => [e.date, e.description, e.keys])));
+  for (const e of ninety) assert.equal(e.timeSeconds % 60, 0);
+  assert.deepEqual(plain(T.buildEntries(out, { percent: 100 })), plain(full));
+});
+
+test('the percentage is clamped to 1–100 and unreadable values mean 100', () => {
+  assert.equal(T.clampPercent(90), 90);
+  assert.equal(T.clampPercent('85'), 85);
+  assert.equal(T.clampPercent(89.6), 90);
+  assert.equal(T.clampPercent(150), 100);
+  assert.equal(T.clampPercent(0), 1);
+  assert.equal(T.clampPercent(-20), 1);
+  for (const v of ['', ' ', 'abc', null, undefined, NaN]) assert.equal(T.clampPercent(v), 100, String(v));
+});

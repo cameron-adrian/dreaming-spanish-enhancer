@@ -1255,6 +1255,24 @@
   font-size: 14px;
 }
 
+.ds-toi-percent {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.ds-toi-percent-input {
+  width: 4.5em;
+  background: var(--ds-bg-input);
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  color: var(--ds-text);
+  padding: 3px 6px;
+}
+
 .ds-toi-dupnote {
   margin-top: 4px;
   font-size: 12px;
