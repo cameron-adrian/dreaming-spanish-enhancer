@@ -255,9 +255,11 @@ const TimeOutsideUI = {
           id = await DSApi.addExternalTime(entry, state.language, opts);
         } catch (e) {
           if (/AUTH_EXPIRED|NOT_AUTHENTICATED/.test(e.message)) throw e;
-          // One retry with the same id + key for transient failures.
+          // The POST may have landed with only the response lost — DS isn't known to
+          // honour the idempotency key, so look for our id before retrying once.
           await new Promise(r => setTimeout(r, 1500));
-          id = await DSApi.addExternalTime(entry, state.language, opts);
+          const landed = (await DSApi.getExternalTimes(state.language)).some(x => x.id === opts.id);
+          id = landed ? opts.id : await DSApi.addExternalTime(entry, state.language, opts);
         }
         record.entries.push({ id, date: entry.date, timeSeconds: entry.timeSeconds, keys: entry.keys });
         // Save after every entry so a closed tab can't lose track of what was posted.
