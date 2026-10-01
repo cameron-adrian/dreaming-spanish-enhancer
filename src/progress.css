@@ -1332,7 +1332,8 @@
   color: var(--ds-text-secondary);
 }
 
-.ds-toi-badge-new { background: rgba(14, 212, 120, 0.15); color: #0a9a58; }
+.ds-toi-badge-new,
+.ds-toi-badge-continued { background: rgba(14, 212, 120, 0.15); color: #0a9a58; }
 .ds-toi-badge-weak { background: rgba(255, 147, 1, 0.15); color: #c46f00; }
 .ds-toi-badge-manual,
 .ds-toi-badge-imported,

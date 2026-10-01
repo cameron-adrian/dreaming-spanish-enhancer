@@ -245,6 +245,10 @@ const TimeOutsideImport = {
       const dateP = mapping.date ? this.parseDate(r[mapping.date]) : null;
       const startP = mapping.start ? this.parseDate(r[mapping.start]) : null;
       ep.date = this.dsDay(dateP, startP);
+      // Podcast Addict keeps one row per episode and moves its end time forward as
+      // you keep listening, so time added since the last import belongs to the end day.
+      const endP = mapping.end ? this.parseDate(r[mapping.end]) : null;
+      ep.endDate = endP ? this.dsDay(endP, endP) : null;
 
       let seconds = mapping.duration ? this.parseDuration(r[mapping.duration], mapping.duration) : null;
       if (seconds == null && mapping.start && mapping.end) {
@@ -404,6 +408,8 @@ const TimeOutsideImport = {
    *
    *   imported  — this extension already imported it (local log), or its full title
    *               is already in a DS entry's description
+   *   continued — imported before, but listened to further since: `seconds` becomes
+   *               only the extra time, dated on the row's end day (selected)
    *   repeat    — same episode earlier in this file
    *   manual    — looks like an entry you typed by hand (show + title/episode number,
    *               or show on the same day)
@@ -411,9 +417,13 @@ const TimeOutsideImport = {
    *   new       — no match
    *   invalid   — row couldn't be read
    *
-   * existing: DS externalTimes entries. importedKeys: Set of episodeKey()s from the import log.
+   * existing: DS externalTimes entries. imported: episodeKey()s from the import log —
+   * a Map of key → listened seconds already credited (null when unknown), or a Set.
    */
-  classifyDuplicates(episodes, existing = [], importedKeys = new Set()) {
+  // Less extra listening than this is rounding noise, not a continued episode.
+  CONTINUE_MIN_SECONDS: 60,
+
+  classifyDuplicates(episodes, existing = [], imported = new Set()) {
     const seen = new Set();
     const entries = existing.map(e => ({
       ...e,
@@ -427,7 +437,17 @@ const TimeOutsideImport = {
       const out = (status, reason, match = null, selected = false) =>
         ({ ...ep, key, status, reason, match, selected });
 
-      if (importedKeys.has(key)) return out('imported', 'Already imported by DS Enhancer');
+      if (imported.has(key)) {
+        const credited = imported instanceof Map ? imported.get(key) : null;
+        const extra = credited == null ? 0 : ep.seconds - credited;
+        if (extra < this.CONTINUE_MIN_SECONDS) return out('imported', 'Already imported by DS Enhancer');
+        const mins = s => Math.round(s / 60);
+        return {
+          ...out('continued', `Listened ${mins(extra)} more min since the last import (${mins(credited)} min already counted)`, null, true),
+          seconds: extra,
+          date: ep.endDate || ep.date,
+        };
+      }
 
       // Imported entries list one title per line, so an exact title line under a
       // matching show is conclusive even for short titles. A long title anywhere
@@ -479,11 +499,15 @@ const TimeOutsideImport = {
     for (const ep of episodes) {
       if (!ep.selected || ep.error) continue;
       const k = `${ep.date}|${ep.show}`;
-      if (!groups.has(k)) groups.set(k, { date: ep.date, show: ep.show, seconds: 0, titles: [], keys: [] });
+      if (!groups.has(k)) groups.set(k, { date: ep.date, show: ep.show, seconds: 0, titles: [], keys: [], episodes: {} });
       const g = groups.get(k);
       g.seconds += ep.seconds;
-      if (ep.title) g.titles.push(ep.title);
-      g.keys.push(ep.key || this.episodeKey(ep));
+      if (ep.title) g.titles.push(ep.status === 'continued' ? `${ep.title} (continued)` : ep.title);
+      const key = ep.key || this.episodeKey(ep);
+      g.keys.push(key);
+      // Raw listened seconds per episode (before the percentage) — the next import
+      // subtracts these to find time listened since.
+      g.episodes[key] = (g.episodes[key] || 0) + ep.seconds;
     }
     const entries = [];
     for (const g of groups.values()) {
@@ -492,9 +516,35 @@ const TimeOutsideImport = {
       const description = g.show
         ? `${g.show}:\n\n${g.titles.join('\n')}`.trim()
         : g.titles.join('\n');
-      entries.push({ date: g.date, timeSeconds, description, type, keys: g.keys });
+      entries.push({ date: g.date, timeSeconds, description, type, keys: g.keys, episodes: g.episodes });
     }
     return entries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  },
+
+  /**
+   * From the import log: episodeKey → raw listened seconds already credited, counting
+   * only entries still on DS (so undone or deleted imports can be re-imported in full).
+   * Entries logged before 0.3.3 have no per-episode seconds: a single-episode entry's
+   * time is scaled back up by its import's percentage; a shared one is unknown (null),
+   * which keeps that episode as plain "Already imported".
+   */
+  creditedSeconds(log, existing, language) {
+    const ids = new Set(existing.map(e => e.id));
+    const credited = new Map();
+    for (const imp of log) {
+      if (imp.language !== language) continue;
+      for (const e of imp.entries) {
+        if (!ids.has(e.id)) continue;
+        for (const k of e.keys) {
+          let s = null;
+          if (e.episodes && typeof e.episodes[k] === 'number') s = e.episodes[k];
+          else if (e.keys.length === 1) s = e.timeSeconds * 100 / this.clampPercent(imp.percent);
+          const prev = credited.has(k) ? credited.get(k) : 0;
+          credited.set(k, s == null || prev == null ? null : prev + s);
+        }
+      }
+    }
+    return credited;
   },
 
   /** Whole percent between 1 and 100; anything unreadable means 100. */

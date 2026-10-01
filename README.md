@@ -46,6 +46,8 @@ On **Progress → Time outside**, an import card turns a podcast listening histo
   applied to each entry before rounding, and remembered for next time
 - **Duplicate check** — every episode is listed with a status before anything is posted:
   - *Already imported*: imported before (local log, or its title is already in a DS entry)
+  - *Continued*: imported before, but you've listened further since — only the extra minutes
+    are added, on the day you finished, as "Episode (continued)". Needs this browser's import log
   - *Logged by hand*: matches an entry you typed yourself — show nickname or initials
     (e.g. "ecj"), episode number, or title words within a day
   - *Repeat*: same episode earlier in the file

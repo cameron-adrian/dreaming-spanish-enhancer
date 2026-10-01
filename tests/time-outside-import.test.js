@@ -219,3 +219,104 @@ test('the percentage is clamped to 1–100 and unreadable values mean 100', () =
   assert.equal(T.clampPercent(-20), 1);
   for (const v of ['', ' ', 'abc', null, undefined, NaN]) assert.equal(T.clampPercent(v), 100, String(v));
 });
+
+// ---- Episodes finished after an import ----
+// Podcast Addict has one row per episode: a later report repeats the row with a
+// larger listened time and a later end time (made-up rows, real column layout).
+
+const HEADER = 'listening_date,podcast_name,episode_name,listening_start_at,listening_end_at,elapsed_time,listened_duration,fully_listened,episode_duration,history_quality';
+const report = (...rows) => [HEADER, ...rows].join('\n');
+const PARTIAL = '2026-09-27,"Charlas Lentas","Un viaje largo por Patagonia",2026-09-27 01:12:51,2026-09-27 01:12:51,00:00:00,00:06:08,false,00:23:13,"approximate"';
+const OTHER = '2026-09-28,"Charlas Lentas","Mercados de Oaxaca",2026-09-28 15:00:00,2026-09-28 15:00:00,00:00:00,00:20:00,true,00:20:00,"approximate"';
+// Same episode, finished on 9/30: only the end time and totals moved...
+const FINISHED_END_MOVED = '2026-09-27,"Charlas Lentas","Un viaje largo por Patagonia",2026-09-27 01:12:51,2026-09-30 18:40:00,00:00:00,00:23:13,true,00:23:13,"approximate"';
+// ...or the whole row moved to the new day.
+const FINISHED_ROW_MOVED = '2026-09-30,"Charlas Lentas","Un viaje largo por Patagonia",2026-09-30 18:20:00,2026-09-30 18:40:00,00:00:00,00:23:13,true,00:23:13,"approximate"';
+
+/** Import a report the way the card does; returns the DS entries and log it leaves behind. */
+function importReport(text, { existing = [], log = [], percent = 100 } = {}) {
+  const imported = T.creditedSeconds(log, existing, 'es');
+  const classified = T.classifyDuplicates(load(text).episodes, existing, imported);
+  const entries = T.buildEntries(classified, { percent });
+  const posted = entries.map((e, i) => ({ ...e, id: `${log.length}-${i}` }));
+  return {
+    classified,
+    entries,
+    existing: [...existing, ...posted.map(({ id, date, timeSeconds, description, type }) => ({ id, date, timeSeconds, description, type }))],
+    log: [...log, { language: 'es', percent, entries: posted.map(({ id, date, timeSeconds, keys, episodes }) => ({ id, date, timeSeconds, keys, episodes })) }],
+  };
+}
+
+for (const [label, finished] of [['end time moved', FINISHED_END_MOVED], ['whole row moved', FINISHED_ROW_MOVED]]) {
+  test(`a partly heard episode finished later adds only the extra time, on the day it was finished (${label})`, () => {
+    const first = importReport(report(PARTIAL));
+    // 01:12 is before DS's 4am rollover, so the first 6 minutes count for 9/26.
+    assert.deepEqual(plain(first.entries.map(e => [e.date, e.timeSeconds])), [['2026-09-26', 6 * 60]]);
+
+    const second = importReport(report(finished, OTHER), first);
+    const ep = find(second.classified, 'Un viaje largo por Patagonia');
+    assert.equal(ep.status, 'continued');
+    assert.equal(ep.selected, true);
+    assert.equal(ep.seconds, 1393 - 368);
+    assert.equal(ep.date, '2026-09-30');
+
+    const cont = second.entries.find(e => e.date === '2026-09-30');
+    assert.equal(cont.timeSeconds, 17 * 60); // 17:05 more
+    assert.equal(cont.description, 'Charlas Lentas:\n\nUn viaje largo por Patagonia (continued)');
+    assert.equal(find(second.classified, 'Mercados de Oaxaca').status, 'new');
+
+    // A third run of the same report finds nothing new.
+    const third = importReport(report(finished, OTHER), second);
+    assert.equal(find(third.classified, 'Un viaje largo por Patagonia').status, 'imported');
+    assert.equal(find(third.classified, 'Mercados de Oaxaca').status, 'imported');
+    assert.equal(third.entries.length, 0);
+  });
+}
+
+test('the percentage applies to the extra time only, and counts the raw time as heard', () => {
+  const first = importReport(report(PARTIAL), { percent: 50 });
+  assert.equal(first.entries[0].timeSeconds, 3 * 60);
+  assert.equal(first.log[0].entries[0].episodes[first.entries[0].keys[0]], 368);
+
+  const second = importReport(report(FINISHED_END_MOVED), { ...first, percent: 90 });
+  assert.equal(find(second.classified, 'Un viaje largo por Patagonia').seconds, 1393 - 368);
+  // 17:05 × 0.9 = 15:22 → 15 minutes
+  assert.equal(second.entries[0].timeSeconds, 15 * 60);
+});
+
+test('undoing the first import means the finished episode is imported in full', () => {
+  const first = importReport(report(PARTIAL));
+  const undone = { log: first.log, existing: [] }; // entries deleted from DS
+  const again = importReport(report(FINISHED_ROW_MOVED), undone);
+  const ep = find(again.classified, 'Un viaje largo por Patagonia');
+  assert.equal(ep.status, 'new');
+  assert.equal(again.entries[0].timeSeconds, 23 * 60);
+});
+
+test('less than a minute of extra listening is not a continuation', () => {
+  const first = importReport(report(PARTIAL));
+  const nudged = PARTIAL.replace('00:06:08,false', '00:06:50,false').replace('2026-09-27 01:12:51,00:00', '2026-09-30 10:00:00,00:00');
+  const second = importReport(report(nudged), first);
+  assert.equal(find(second.classified, 'Un viaje largo por Patagonia').status, 'imported');
+});
+
+test('import logs from before 0.3.3 still allow continuing a single-episode entry', () => {
+  const key = T.episodeKey({ show: 'Charlas Lentas', title: 'Un viaje largo por Patagonia' });
+  const otherKey = T.episodeKey({ show: 'Charlas Lentas', title: 'Mercados de Oaxaca' });
+  const existing = [
+    { id: 'old1', date: '2026-09-26', timeSeconds: 360, type: 'listening', description: 'Charlas Lentas:\n\nUn viaje largo por Patagonia' },
+  ];
+  // Old record: no percent, no per-episode seconds.
+  const log = [{ language: 'es', entries: [{ id: 'old1', date: '2026-09-26', timeSeconds: 360, keys: [key] }] }];
+  assert.equal(T.creditedSeconds(log, existing, 'es').get(key), 360);
+  const second = importReport(report(FINISHED_END_MOVED), { existing, log });
+  const ep = find(second.classified, 'Un viaje largo por Patagonia');
+  assert.equal(ep.status, 'continued');
+  assert.equal(ep.seconds, 1393 - 360);
+
+  // Two episodes sharing one old entry can't be split — stays "Already imported".
+  const shared = [{ language: 'es', entries: [{ id: 'old1', date: '2026-09-26', timeSeconds: 1560, keys: [key, otherKey] }] }];
+  assert.equal(T.creditedSeconds(shared, existing, 'es').get(key), null);
+  const third = importReport(report(FINISHED_END_MOVED), { existing, log: shared });
+  assert.equal(find(third.classified, 'Un viaje largo por Patagonia').status, 'imported');
+});

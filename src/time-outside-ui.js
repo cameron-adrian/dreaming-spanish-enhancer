@@ -11,7 +11,7 @@ const TimeOutsideUI = {
   PERCENT_KEY: 'ds_time_outside_percent',
   ROLE_LABELS: { date: 'Date', start: 'Start time', end: 'End time', duration: 'Time listened', show: 'Show', title: 'Episode' },
   STATUS_LABELS: {
-    new: 'New', weak: 'Check', manual: 'Logged by hand', imported: 'Already imported',
+    new: 'New', continued: 'Continued', weak: 'Check', manual: 'Logged by hand', imported: 'Already imported',
     repeat: 'Repeat', invalid: 'Unreadable',
   },
 
@@ -27,20 +27,9 @@ const TimeOutsideUI = {
     return new Promise(resolve => chrome.storage.local.set({ [key]: value }, resolve));
   },
 
-  /** Import log: [{ at, language, entries: [{ id, date, timeSeconds, keys }] }], newest last. */
+  /** Import log: [{ at, language, percent, entries: [{ id, date, timeSeconds, keys, episodes }] }], newest last. */
   loadLog() { return this.storageGet(this.LOG_KEY, []); },
   saveLog(log) { return this.storageSet(this.LOG_KEY, log); },
-
-  /** Episode keys from past imports whose DS entry still exists (deleted ones can be re-imported). */
-  importedKeys(log, existing, language) {
-    const ids = new Set(existing.map(e => e.id));
-    const keys = new Set();
-    for (const imp of log) {
-      if (imp.language !== language) continue;
-      for (const e of imp.entries) if (ids.has(e.id)) e.keys.forEach(k => keys.add(k));
-    }
-    return keys;
-  },
 
   // ---- Card ----
 
@@ -90,7 +79,7 @@ const TimeOutsideUI = {
       state.mapping = TimeOutsideImport.detectColumns(state.table.headers, state.table.rows);
       // Duplicate checks need the current DS entries — refuse to continue without them.
       state.existing = await DSApi.getExternalTimes(state.language);
-      state.importedKeys = this.importedKeys(await this.loadLog(), state.existing, state.language);
+      state.imported = TimeOutsideImport.creditedSeconds(await this.loadLog(), state.existing, state.language);
       state.showPrefs = await this.storageGet(this.SHOWS_KEY, {});
       state.percent = TimeOutsideImport.clampPercent(await this.storageGet(this.PERCENT_KEY, 100));
       state.fileName = file.name;
@@ -105,7 +94,7 @@ const TimeOutsideUI = {
     state.rowOverride.clear();
     const raw = TimeOutsideImport.toEpisodes(state.table.rows, state.mapping);
     state.shows = TimeOutsideImport.suggestShows(raw);
-    state.episodes = TimeOutsideImport.classifyDuplicates(raw, state.existing, state.importedKeys);
+    state.episodes = TimeOutsideImport.classifyDuplicates(raw, state.existing, state.imported);
     this.renderReview(card);
   },
 
@@ -161,7 +150,7 @@ const TimeOutsideUI = {
         <td class="ds-toi-nowrap">${this.esc(ep.date || '')}</td>
         <td>${this.esc(ep.show)}</td>
         <td>${this.esc(ep.title)}</td>
-        <td class="ds-toi-num">${Math.round(ep.seconds / 60)}m</td>
+        <td class="ds-toi-num">${ep.status === 'continued' ? '+' : ''}${Math.round(ep.seconds / 60)}m</td>
         <td>
           <span class="ds-toi-badge ds-toi-badge-${ep.status}">${this.STATUS_LABELS[ep.status]}</span>
           ${ep.reason ? `<div class="ds-toi-reason">${this.esc(ep.reason)}</div>` : ''}
@@ -194,6 +183,7 @@ const TimeOutsideUI = {
           ${state.percent < 100 ? `<span class="ds-toi-muted">(${hours(fullSec)} h listened → ${hours(totalSec)} h credited)</span>` : ''}
         </label>
         ${dupCount ? `<div class="ds-toi-dupnote">${dupCount} episode${dupCount === 1 ? '' : 's'} already on DS or repeated — unticked. Tick any you still want to add.</div>` : ''}
+        ${counts.continued ? `<div class="ds-toi-dupnote">${counts.continued} imported before but listened to further since — only the extra time is added.</div>` : ''}
         ${counts.weak ? `<div class="ds-toi-dupnote">${counts.weak} marked “Check”: same show logged within a day, but nothing else matched. Still ticked.</div>` : ''}
       </div>
 
@@ -277,7 +267,7 @@ const TimeOutsideUI = {
           const landed = (await DSApi.getExternalTimes(state.language)).some(x => x.id === opts.id);
           id = landed ? opts.id : await DSApi.addExternalTime(entry, state.language, opts);
         }
-        record.entries.push({ id, date: entry.date, timeSeconds: entry.timeSeconds, keys: entry.keys });
+        record.entries.push({ id, date: entry.date, timeSeconds: entry.timeSeconds, keys: entry.keys, episodes: entry.episodes });
         // Save after every entry so a closed tab can't lose track of what was posted.
         await this.saveLog(log);
       } catch (e) {
