@@ -326,7 +326,10 @@ const DSApi = {
     for (const r of records) {
       const dateStr = r.date || r.day || r.d || r.timestamp;
       if (!dateStr) continue;
-      const date = new Date(dateStr);
+      // DS sends plain YYYY-MM-DD days. new Date() reads those as UTC midnight,
+      // which lands on the previous day west of UTC — build them as local dates.
+      const ymd = typeof dateStr === 'string' && dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const date = ymd ? new Date(+ymd[1], +ymd[2] - 1, +ymd[3]) : new Date(dateStr);
       if (isNaN(date.getTime())) continue;
       if (date < yearStart || date >= yearEnd) continue;
 
