@@ -10,6 +10,7 @@
   const BOOK_CARD_ID = 'ds-book-tracker-card';
   const HIDDEN_SECTION_ID = 'ds-hidden-section';
   const HOURS_YEAR_TILE_ID = 'ds-hours-this-year-tile';
+  const TIME_OUTSIDE_CARD_ID = 'ds-time-outside-import-card';
   let progressData = null;
   let isLoading = false;
   let lastPath = null;
@@ -40,6 +41,12 @@
       if (sec) sec.remove();
     }
 
+    if (isTimeOutsidePage()) {
+      waitForTimeOutsideAndInject();
+    } else {
+      document.getElementById(TIME_OUTSIDE_CARD_ID)?.remove();
+    }
+
     // Hide any video cards that are in the hidden list
     applyHidingToPage();
     setTimeout(applyHidingToPage, 600);
@@ -53,7 +60,29 @@
     return /\/library\/?$/.test(location.pathname);
   }
 
-  // Detect SPA navigation by patching history methods
+  function isTimeOutsidePage() {
+    return /\/progress\/time-outside\/?$/.test(location.pathname);
+  }
+
+  /** DS language code from the URL's first segment (/spanish/…, /french/…). */
+  function languageFromPath() {
+    const seg = location.pathname.split('/')[1] || '';
+    return { spanish: 'es', french: 'fr' }[seg.toLowerCase()] || 'es';
+  }
+
+  // Detect SPA navigation. Content scripts run in an isolated world, so patching
+  // history.pushState here never sees the app's own pushState calls — in-app
+  // navigation went unnoticed and cards only appeared on a full reload. The
+  // Navigation API (where available) and a cheap path poll catch it instead;
+  // onRouteChange returns early when the path hasn't changed.
+  function watchRoutes() {
+    patchHistory();
+    if (window.navigation && typeof window.navigation.addEventListener === 'function') {
+      window.navigation.addEventListener('navigatesuccess', onRouteChange);
+    }
+    setInterval(onRouteChange, 500);
+  }
+
   function patchHistory() {
     const origPush = history.pushState;
     const origReplace = history.replaceState;
@@ -338,6 +367,29 @@
     container.appendChild(section);
   }
 
+  // ---- Time Outside Page: CSV Import Card ----
+
+  function injectTimeOutsideCard() {
+    if (document.getElementById(TIME_OUTSIDE_CARD_ID)) return true;
+    // Sits above DS's own History table on the time-outside page.
+    const history = document.querySelector('.ds-time-outside-page > .ds-history-table-card');
+    if (!history) return false;
+    const card = TimeOutsideUI.createCard({ language: languageFromPath(), isDark: isDarkMode() });
+    card.id = TIME_OUTSIDE_CARD_ID;
+    history.parentElement.insertBefore(card, history);
+    return true;
+  }
+
+  function waitForTimeOutsideAndInject() {
+    if (injectTimeOutsideCard()) return;
+    const obs = new MutationObserver(() => {
+      if (!isTimeOutsidePage()) { obs.disconnect(); return; }
+      if (injectTimeOutsideCard()) obs.disconnect();
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    setTimeout(() => obs.disconnect(), 15000);
+  }
+
   // ---- Apply Hiding to Current Page ----
 
   async function applyHidingToPage() {
@@ -576,7 +628,7 @@
   // ---- Init ----
   const { version } = chrome.runtime.getManifest();
   console.log(`[DS Enhancer] v${version} loaded`);
-  patchHistory();
+  watchRoutes();
   onRouteChange();
   initMenuObserver();
   applyHidingToPage();

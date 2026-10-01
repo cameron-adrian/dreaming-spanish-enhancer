@@ -14,7 +14,10 @@
 - CI: `.github/workflows/test.yml` runs on every PR and on pushes to `main`, once in UTC and once in `America/New_York` — date bugs often only show west of UTC
 - `tests/helpers/load-script.js` loads a browser script from `src/` into a `vm` context with stubbed `localStorage`/`fetch`/`location`; use it rather than turning the scripts into modules
 - `tests/fixtures/ds-api.js` mirrors the live DS API response shapes (captured 2026-09-30). When DS changes a shape, update the fixture first
+- `tests/time-outside-import.test.js` covers the CSV importer against `tests/fixtures/podcast-addict-listening-report.csv` (made-up rows in Podcast Addict's real column layout) and hand-typed DS entries in the user's shorthand style. Never commit a real listening report — it contains personal feed names
+- The externalTime POST/DELETE shapes in `src/api.js` were verified live on 2026-09-30; the API tests pin them
 - `tests/manifest.test.js` guards the two manifests staying in sync, referenced files existing, scripts parsing, and content scripts not redeclaring each other's top-level names
+- `tests/content-routing.test.js` loads the whole `content.js` with stubbed DOM/chrome and simulates in-app navigation the way the isolated world sees it (location changes, the patched `history.pushState` never called). Patching history alone does not detect DS navigation — route detection relies on the Navigation API and a path poll
 - `tests/install-macos.test.js` covers the installer against real zips and a fake Chrome profile (`CHROME_ROOT`, `DSE_OS`, `DSE_SKIP_CHROME`) — never the real profile
 
 ### Installing on macOS (after a version bump merges)

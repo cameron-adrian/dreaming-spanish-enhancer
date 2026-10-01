@@ -41,4 +41,14 @@ const dayWatchedTime = [
   { timeSeconds: 900, goalReached: false, date: '2027-01-01' },
 ];
 
-module.exports = { videos, watchedVideo, series, user, dayWatchedTime };
+// externalTime ("time outside the platform"). GET returns this; POST answers
+// with { id } and DELETE with { message: 'Okay.' } (verified live 2026-09-30).
+const externalTime = {
+  externalTimes: [
+    { id: '16940781857590.1461916007706927', timeSeconds: 0, description: 'Input time prior to Dreaming Spanish', type: 'initial', date: '2024-01-22' },
+    { id: '17790813753937a1b2c3d4e5', timeSeconds: 1320, description: 'al vuelo:\n\ncrazy nightclub stories', type: 'listening', date: '2026-05-28' },
+    { id: '17790813753937f6e5d4c3b2', timeSeconds: 4860, description: 'Every video in this playlist', type: 'watching', date: '2023-09-01', externalVideoUrl: 'https://www.youtube.com/playlist' },
+  ],
+};
+
+module.exports = { videos, watchedVideo, series, user, dayWatchedTime, externalTime };
