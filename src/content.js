@@ -70,7 +70,19 @@
     return { spanish: 'es', french: 'fr' }[seg.toLowerCase()] || 'es';
   }
 
-  // Detect SPA navigation by patching history methods
+  // Detect SPA navigation. Content scripts run in an isolated world, so patching
+  // history.pushState here never sees the app's own pushState calls — in-app
+  // navigation went unnoticed and cards only appeared on a full reload. The
+  // Navigation API (where available) and a cheap path poll catch it instead;
+  // onRouteChange returns early when the path hasn't changed.
+  function watchRoutes() {
+    patchHistory();
+    if (window.navigation && typeof window.navigation.addEventListener === 'function') {
+      window.navigation.addEventListener('navigatesuccess', onRouteChange);
+    }
+    setInterval(onRouteChange, 500);
+  }
+
   function patchHistory() {
     const origPush = history.pushState;
     const origReplace = history.replaceState;
@@ -616,7 +628,7 @@
   // ---- Init ----
   const { version } = chrome.runtime.getManifest();
   console.log(`[DS Enhancer] v${version} loaded`);
-  patchHistory();
+  watchRoutes();
   onRouteChange();
   initMenuObserver();
   applyHidingToPage();
