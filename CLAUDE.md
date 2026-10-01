@@ -17,6 +17,7 @@
 - `tests/time-outside-import.test.js` covers the CSV importer against `tests/fixtures/podcast-addict-listening-report.csv` (made-up rows in Podcast Addict's real column layout) and hand-typed DS entries in the user's shorthand style. Never commit a real listening report — it contains personal feed names
 - The externalTime POST/DELETE shapes in `src/api.js` were verified live on 2026-09-30; the API tests pin them
 - `tests/manifest.test.js` guards the two manifests staying in sync, referenced files existing, scripts parsing, and content scripts not redeclaring each other's top-level names
+- `tests/content-routing.test.js` loads the whole `content.js` with stubbed DOM/chrome and simulates in-app navigation the way the isolated world sees it (location changes, the patched `history.pushState` never called). Patching history alone does not detect DS navigation — route detection relies on the Navigation API and a path poll
 - `tests/install-macos.test.js` covers the installer against real zips and a fake Chrome profile (`CHROME_ROOT`, `DSE_OS`, `DSE_SKIP_CHROME`) — never the real profile
 
 ### Installing on macOS (after a version bump merges)
