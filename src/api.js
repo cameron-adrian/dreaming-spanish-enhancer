@@ -23,6 +23,10 @@ const DSApi = {
   },
 
   async fetch(endpoint, params = {}) {
+    return this.request('GET', endpoint, params);
+  },
+
+  async request(method, endpoint, params = {}, body = undefined) {
     const token = this.getToken();
     if (!token) throw new Error('NOT_AUTHENTICATED');
 
@@ -31,11 +35,14 @@ const DSApi = {
       url.searchParams.set(key, val);
     }
 
+    // No Content-Type header: the DS app sends its JSON bodies without one.
+    const init = { headers: { 'Authorization': `Bearer ${token}` } };
+    if (method !== 'GET') init.method = method;
+    if (body !== undefined) init.body = JSON.stringify(body);
+
     let resp;
     try {
-      resp = await fetch(url.toString(), {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      resp = await fetch(url.toString(), init);
     } catch (networkErr) {
       throw new Error(`NETWORK_ERROR: ${networkErr.message}`);
     }
@@ -344,5 +351,60 @@ const DSApi = {
     }
 
     return Math.round((totalSeconds / 3600) * 10) / 10;
+  },
+
+  // ---- Time outside the platform (externalTime) ----
+  // Request shapes copied from the DS app's own add/delete calls and verified
+  // live with a POST → GET → DELETE round trip on 2026-09-30.
+
+  /** All time-outside entries. Throws API_SHAPE if DS changed the response. */
+  async getExternalTimes(language = 'es') {
+    const resp = await this.fetch('externalTime', { language });
+    const list = resp?.externalTimes;
+    const looksRight = Array.isArray(list) && list.every(e =>
+      e && typeof e.id === 'string' && typeof e.timeSeconds === 'number' &&
+      typeof e.date === 'string' && typeof e.type === 'string');
+    if (!looksRight) throw new Error('API_SHAPE: externalTime response changed');
+    return list;
+  },
+
+  /** Same id format the DS app generates for new entries. */
+  newExternalTimeId() {
+    return Date.now().toString() + Math.random().toString(16).slice(2);
+  },
+
+  /** DS's "today": the local date, where the day starts at 4am. */
+  dsToday(now = new Date()) {
+    const d = new Date(now.getTime());
+    if (d.getHours() < 4) d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  },
+
+  idempotencyKey() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+  },
+
+  /**
+   * Add one entry: { date, timeSeconds, description, type }. Returns the id DS
+   * stored it under. Pass the same idempotencyKey when retrying the same entry.
+   */
+  async addExternalTime(entry, language = 'es', { id = this.newExternalTimeId(), idempotencyKey = this.idempotencyKey() } = {}) {
+    const body = {
+      id,
+      timeSeconds: entry.timeSeconds,
+      description: entry.description,
+      type: entry.type,
+      date: entry.date,
+      today: this.dsToday(),
+      idempotencyKey,
+    };
+    const resp = await this.request('POST', 'externalTime', { language }, body);
+    return resp?.id || id;
+  },
+
+  async deleteExternalTime(id, language = 'es') {
+    await this.request('DELETE', 'externalTime', { language }, { id, idempotencyKey: this.idempotencyKey() });
   }
 };

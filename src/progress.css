@@ -1105,3 +1105,245 @@
   animation: ds-fade-out 0.3s forwards;
   pointer-events: none;
 }
+
+/* ---- Time Outside: CSV Import Card ---- */
+
+.ds-toi-card {
+  margin-bottom: 24px;
+}
+
+.ds-toi-card .ds-card-header {
+  margin-bottom: 12px;
+}
+
+.ds-toi-drop {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  padding: 24px 16px;
+  border: 2px dashed var(--ds-border);
+  border-radius: 10px;
+  background: var(--ds-bg-base);
+  cursor: pointer;
+  text-align: center;
+  color: var(--ds-text-secondary);
+  transition: border-color 0.15s;
+}
+
+.ds-toi-drop:hover {
+  border-color: var(--ds-secondary);
+}
+
+.ds-toi-drop strong {
+  color: var(--ds-text);
+  font-size: 14px;
+}
+
+.ds-toi-btn {
+  background: var(--ds-bg-input);
+  border: 1px solid var(--ds-border);
+  border-radius: 8px;
+  color: var(--ds-text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 8px 14px;
+  transition: all 0.15s;
+}
+
+.ds-toi-btn:hover:not(:disabled) {
+  border-color: var(--ds-secondary);
+}
+
+.ds-toi-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ds-toi-btn-primary {
+  background: var(--ds-primary);
+  border-color: var(--ds-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.ds-toi-link {
+  background: none;
+  border: none;
+  color: var(--ds-secondary-light);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0 0 0 8px;
+  text-decoration: underline;
+}
+
+.ds-toi-muted {
+  color: var(--ds-text-muted);
+  font-weight: normal;
+}
+
+.ds-toi-file {
+  margin: 0 0 12px;
+  color: var(--ds-text-secondary);
+}
+
+.ds-toi-msg-error {
+  color: var(--ds-error);
+}
+
+.ds-toi-section {
+  border: 1px solid var(--ds-border-light);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.ds-toi-section summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ds-toi-maps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ds-toi-map {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ds-text-secondary);
+  font-size: 12px;
+}
+
+.ds-toi-map select {
+  background: var(--ds-bg-input);
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  color: var(--ds-text);
+  padding: 4px 6px;
+}
+
+.ds-toi-shows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ds-toi-show {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.ds-toi-show-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-toi-summary {
+  margin: 12px 0;
+  font-size: 14px;
+}
+
+.ds-toi-dupnote {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ds-text-secondary);
+}
+
+.ds-toi-table-wrap {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--ds-border-light);
+  border-radius: 8px;
+}
+
+.ds-toi-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ds-toi-table th {
+  position: sticky;
+  top: 0;
+  background: var(--ds-bg-base);
+  text-align: left;
+  padding: 6px 8px;
+  color: var(--ds-text-secondary);
+  font-weight: 600;
+}
+
+.ds-toi-table td {
+  padding: 6px 8px;
+  border-top: 1px solid var(--ds-border-light);
+  vertical-align: top;
+}
+
+.ds-toi-off td {
+  color: var(--ds-text-muted);
+}
+
+.ds-toi-nowrap,
+.ds-toi-num {
+  white-space: nowrap;
+}
+
+.ds-toi-num {
+  text-align: right;
+}
+
+.ds-toi-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--ds-bg-input);
+  color: var(--ds-text-secondary);
+}
+
+.ds-toi-badge-new { background: rgba(14, 212, 120, 0.15); color: #0a9a58; }
+.ds-toi-badge-weak { background: rgba(255, 147, 1, 0.15); color: #c46f00; }
+.ds-toi-badge-manual,
+.ds-toi-badge-imported,
+.ds-toi-badge-repeat { background: rgba(99, 84, 177, 0.15); color: var(--ds-secondary-light); }
+.ds-toi-badge-invalid { background: rgba(255, 98, 117, 0.15); color: var(--ds-error); }
+
+.ds-toi-reason,
+.ds-toi-match {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ds-text-secondary);
+}
+
+.ds-toi-match {
+  font-style: italic;
+}
+
+.ds-toi-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.ds-toi-status {
+  margin-top: 8px;
+  color: var(--ds-text-secondary);
+}
+
+.ds-toi-result p {
+  margin: 0 0 8px;
+}

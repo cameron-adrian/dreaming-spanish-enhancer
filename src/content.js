@@ -10,6 +10,7 @@
   const BOOK_CARD_ID = 'ds-book-tracker-card';
   const HIDDEN_SECTION_ID = 'ds-hidden-section';
   const HOURS_YEAR_TILE_ID = 'ds-hours-this-year-tile';
+  const TIME_OUTSIDE_CARD_ID = 'ds-time-outside-import-card';
   let progressData = null;
   let isLoading = false;
   let lastPath = null;
@@ -40,6 +41,12 @@
       if (sec) sec.remove();
     }
 
+    if (isTimeOutsidePage()) {
+      waitForTimeOutsideAndInject();
+    } else {
+      document.getElementById(TIME_OUTSIDE_CARD_ID)?.remove();
+    }
+
     // Hide any video cards that are in the hidden list
     applyHidingToPage();
     setTimeout(applyHidingToPage, 600);
@@ -51,6 +58,16 @@
 
   function isLibraryPage() {
     return /\/library\/?$/.test(location.pathname);
+  }
+
+  function isTimeOutsidePage() {
+    return /\/progress\/time-outside\/?$/.test(location.pathname);
+  }
+
+  /** DS language code from the URL's first segment (/spanish/…, /french/…). */
+  function languageFromPath() {
+    const seg = location.pathname.split('/')[1] || '';
+    return { spanish: 'es', french: 'fr' }[seg.toLowerCase()] || 'es';
   }
 
   // Detect SPA navigation by patching history methods
@@ -336,6 +353,29 @@
     const videos = await HideVideoUI.loadHiddenVideos();
     const section = HideVideoUI.createSection(videos, isDarkMode());
     container.appendChild(section);
+  }
+
+  // ---- Time Outside Page: CSV Import Card ----
+
+  function injectTimeOutsideCard() {
+    if (document.getElementById(TIME_OUTSIDE_CARD_ID)) return true;
+    // Sits above DS's own History table on the time-outside page.
+    const history = document.querySelector('.ds-time-outside-page > .ds-history-table-card');
+    if (!history) return false;
+    const card = TimeOutsideUI.createCard({ language: languageFromPath(), isDark: isDarkMode() });
+    card.id = TIME_OUTSIDE_CARD_ID;
+    history.parentElement.insertBefore(card, history);
+    return true;
+  }
+
+  function waitForTimeOutsideAndInject() {
+    if (injectTimeOutsideCard()) return;
+    const obs = new MutationObserver(() => {
+      if (!isTimeOutsidePage()) { obs.disconnect(); return; }
+      if (injectTimeOutsideCard()) obs.disconnect();
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    setTimeout(() => obs.disconnect(), 15000);
   }
 
   // ---- Apply Hiding to Current Page ----

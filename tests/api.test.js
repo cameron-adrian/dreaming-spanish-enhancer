@@ -11,6 +11,7 @@ function loadApi({ storage = { token: JSON.stringify(TOKEN) }, routes = {}, host
     localStorage: fakeLocalStorage(storage),
     location: { hostname },
     fetch,
+    crypto: globalThis.crypto,
   });
   return { DSApi, fetch };
 }
@@ -145,4 +146,83 @@ test('computeYearlyHours returns null (not 0) when the response shape is unrecog
 test('computeYearlyHours returns null when the request fails', async () => {
   const { DSApi } = loadApi({ routes: { dayWatchedTime: 500 } });
   assert.equal(await DSApi.computeYearlyHours(2026, 'es'), null);
+});
+
+// ---- Time outside (externalTime) ----
+
+test('getExternalTimes returns the entries from the live response shape', async () => {
+  const { DSApi, fetch } = loadApi({ routes: { externalTime: fx.externalTime } });
+  const list = await DSApi.getExternalTimes('es');
+  assert.equal(list.length, 3);
+  assert.equal(fetch.calls[0].url.searchParams.get('language'), 'es');
+});
+
+test('getExternalTimes refuses a changed response instead of returning nothing', async () => {
+  for (const body of [{ entries: [] }, { externalTimes: [{ id: 1, seconds: 60 }] }, []]) {
+    const { DSApi } = loadApi({ routes: { externalTime: body } });
+    await assert.rejects(DSApi.getExternalTimes('es'), /API_SHAPE/);
+  }
+});
+
+test('addExternalTime posts the same body the DS app sends', async () => {
+  const { DSApi, fetch } = loadApi({ routes: { externalTime: { id: 'abc123' } } });
+  const id = await DSApi.addExternalTime(
+    { date: '2026-06-05', timeSeconds: 1800, description: 'Show:\n\nEpisode', type: 'listening' },
+    'es',
+    { id: 'abc123', idempotencyKey: 'k'.repeat(64) },
+  );
+  assert.equal(id, 'abc123');
+
+  const [call] = fetch.calls;
+  assert.equal(call.init.method, 'POST');
+  assert.equal(call.url.pathname, '/.netlify/functions/externalTime');
+  assert.equal(call.url.searchParams.get('language'), 'es');
+  assert.equal(call.init.headers.Authorization, `Bearer ${TOKEN}`);
+  assert.equal(call.init.headers['Content-Type'], undefined);
+
+  const body = JSON.parse(call.init.body);
+  assert.deepEqual(Object.keys(body).sort(),
+    ['date', 'description', 'id', 'idempotencyKey', 'timeSeconds', 'today', 'type']);
+  assert.equal(body.id, 'abc123');
+  assert.equal(body.timeSeconds, 1800);
+  assert.equal(body.type, 'listening');
+  assert.equal(body.date, '2026-06-05');
+  assert.match(body.today, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(body.idempotencyKey, 'k'.repeat(64));
+});
+
+test('addExternalTime generates DS-style ids and fresh idempotency keys', async () => {
+  const { DSApi, fetch } = loadApi({ routes: { externalTime: {} } });
+  await DSApi.addExternalTime({ date: '2026-06-05', timeSeconds: 60, description: 'x', type: 'listening' });
+  await DSApi.addExternalTime({ date: '2026-06-05', timeSeconds: 60, description: 'x', type: 'listening' });
+  const [a, b] = fetch.calls.map(c => JSON.parse(c.init.body));
+  assert.match(a.id, /^\d{13}[0-9a-f]+$/);
+  assert.notEqual(a.id, b.id);
+  assert.match(a.idempotencyKey, /^[0-9a-f]{64}$/);
+  assert.notEqual(a.idempotencyKey, b.idempotencyKey);
+});
+
+test('addExternalTime surfaces an expired login so an import stops', async () => {
+  const { DSApi } = loadApi({ routes: { externalTime: 401 } });
+  await assert.rejects(
+    DSApi.addExternalTime({ date: '2026-06-05', timeSeconds: 60, description: 'x', type: 'listening' }),
+    /AUTH_EXPIRED/,
+  );
+});
+
+test('deleteExternalTime sends the id in the body', async () => {
+  const { DSApi, fetch } = loadApi({ routes: { externalTime: { message: 'Okay.' } } });
+  await DSApi.deleteExternalTime('abc123', 'fr');
+  const [call] = fetch.calls;
+  assert.equal(call.init.method, 'DELETE');
+  assert.equal(call.url.searchParams.get('language'), 'fr');
+  const body = JSON.parse(call.init.body);
+  assert.equal(body.id, 'abc123');
+  assert.match(body.idempotencyKey, /^[0-9a-f]{64}$/);
+});
+
+test('dsToday rolls the day over at 4am', () => {
+  const { DSApi } = loadApi();
+  assert.equal(DSApi.dsToday(new Date(2026, 5, 2, 3, 59)), '2026-06-01');
+  assert.equal(DSApi.dsToday(new Date(2026, 5, 2, 4, 0)), '2026-06-02');
 });

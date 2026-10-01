@@ -32,6 +32,25 @@ Adds a "Hide video" option to the three-dot menu on every video card:
 - A "Hidden videos" carousel section appears on the `/library` page with unhide buttons
 - Hidden video list persists across browser sessions
 
+### Import Listening Time from CSV
+
+On **Progress → Time outside**, an import card turns a podcast listening history into
+"time outside the platform" entries:
+
+- Upload a CSV — Podcast Addict's *Listening report* is recognised as-is; other CSVs work if
+  they have date, time-listened, show and episode columns (adjustable under **Columns**)
+- Spanish shows are pre-ticked; your show choices are remembered
+- One DS entry per day and show, written like a hand-typed entry (`Show:` then one episode per
+  line), time rounded to whole minutes; listens before 4am count toward the previous day, as on DS
+- **Duplicate check** — every episode is listed with a status before anything is posted:
+  - *Already imported*: imported before (local log, or its title is already in a DS entry)
+  - *Logged by hand*: matches an entry you typed yourself — show nickname or initials
+    (e.g. "ecj"), episode number, or title words within a day
+  - *Repeat*: same episode earlier in the file
+  - *Check*: same show logged within a day, nothing else matched (still ticked)
+- Import asks for a second click to confirm, stops on the first error, and **Undo last import**
+  deletes exactly the entries it created
+
 ### Popup
 
 Click the extension icon on any Dreaming Spanish page for a quick summary:
@@ -123,6 +142,8 @@ client and `browser.identity.launchWebAuthFlow`.
 │   ├── book-tracker-ui.js     # Book tracker card, Open Library search, CRUD
 │   ├── sheets-integration.js  # Google Sheets sync settings and OAuth token handling
 │   ├── hide-video-ui.js       # Menu injection, hidden videos carousel
+│   ├── time-outside-import.js # CSV parsing, column detection, duplicate checks, entry building (no DOM)
+│   ├── time-outside-ui.js     # Time-outside import card, import log, undo
 │   ├── background.js          # Service worker: message routing, cache (5 min TTL), storage
 │   ├── popup.html             # Popup template
 │   ├── popup.js               # Popup logic
@@ -140,3 +161,5 @@ icon on the extension card) or at `about:debugging#/runtime/this-firefox` in Fir
 
 Per project convention, every code push must include a version bump in `manifest.json`.
 Bump `manifest.firefox.json` to the same version to keep the two builds in sync.
+
+Run the tests with `npm test` (Node 20+, nothing to install).
