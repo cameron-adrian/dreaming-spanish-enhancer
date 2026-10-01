@@ -244,17 +244,17 @@ const TimeOutsideImport = {
 
       const dateP = mapping.date ? this.parseDate(r[mapping.date]) : null;
       const startP = mapping.start ? this.parseDate(r[mapping.start]) : null;
-      ep.date = this.dsDay(dateP, startP);
-      // Podcast Addict keeps one row per episode and moves its end time forward as
-      // you keep listening, so time added since the last import belongs to the end day.
       const endP = mapping.end ? this.parseDate(r[mapping.end]) : null;
-      ep.endDate = endP ? this.dsDay(endP, endP) : null;
+      // Date by the end of listening when known: a measured Podcast Addict row can
+      // start just after midnight and run all day, and belongs to the day it ran.
+      ep.date = endP ? this.dsDay(endP, endP) : this.dsDay(dateP, startP);
+      // Exact start/end (ms) identify a row across reports — see classifyDuplicates.
+      ep.startAt = mapping.start ? this.parseTimestamp(r[mapping.start]) : null;
+      ep.endAt = mapping.end ? this.parseTimestamp(r[mapping.end]) : null;
 
       let seconds = mapping.duration ? this.parseDuration(r[mapping.duration], mapping.duration) : null;
-      if (seconds == null && mapping.start && mapping.end) {
-        const s = Date.parse(String(r[mapping.start]).replace(' ', 'T'));
-        const e = Date.parse(String(r[mapping.end]).replace(' ', 'T'));
-        if (!isNaN(s) && !isNaN(e) && e > s) seconds = Math.round((e - s) / 1000);
+      if (seconds == null && ep.startAt != null && ep.endAt != null && ep.endAt > ep.startAt) {
+        seconds = Math.round((ep.endAt - ep.startAt) / 1000);
       }
       ep.seconds = seconds || 0;
 
@@ -263,6 +263,14 @@ const TimeOutsideImport = {
       else if (!ep.show && !ep.title) ep.error = 'No show or episode name';
       return ep;
     });
+  },
+
+  /** Local-time ms for "2026-09-30 13:53:47" / ISO, or null. */
+  parseTimestamp(value) {
+    const v = String(value ?? '').trim();
+    if (!v) return null;
+    const ms = Date.parse(v.replace(' ', 'T'));
+    return isNaN(ms) ? null : ms;
   },
 
   cleanText(s) {
@@ -408,17 +416,18 @@ const TimeOutsideImport = {
    *
    *   imported  — this extension already imported it (local log), or its full title
    *               is already in a DS entry's description
-   *   continued — imported before, but listened to further since: `seconds` becomes
-   *               only the extra time, dated on the row's end day (selected)
-   *   repeat    — same episode earlier in this file
+   *   continued — this row was imported before but has grown since (re-exported after
+   *               more listening): `seconds` becomes only the extra time (selected)
+   *   repeat    — same row (episode + start) earlier in this file
    *   manual    — looks like an entry you typed by hand (show + title/episode number,
    *               or show on the same day)
    *   weak      — same show within a day, nothing else agrees (selected, but flagged)
    *   new       — no match
    *   invalid   — row couldn't be read
    *
-   * existing: DS externalTimes entries. imported: episodeKey()s from the import log —
-   * a Map of key → listened seconds already credited (null when unknown), or a Set.
+   * existing: DS externalTimes entries. imported: from the import log, a Map of
+   * episodeKey → [{ startAt, date, seconds }] (see credits()), or a plain Set of keys
+   * meaning "imported, details unknown".
    */
   // Less extra listening than this is rounding noise, not a continued episode.
   CONTINUE_MIN_SECONDS: 60,
@@ -436,32 +445,46 @@ const TimeOutsideImport = {
       const key = this.episodeKey(ep);
       const out = (status, reason, match = null, selected = false) =>
         ({ ...ep, key, status, reason, match, selected });
+      let otherDay = false;
 
+      // Podcast Addict's measured rows are one per episode per report period, holding
+      // only the time listened in that period. So the same episode on another day is
+      // new listening; only credits for this very row (or a later export of it with
+      // more time) are subtracted.
       if (imported.has(key)) {
-        const credited = imported instanceof Map ? imported.get(key) : null;
-        const extra = credited == null ? 0 : ep.seconds - credited;
-        if (extra < this.CONTINUE_MIN_SECONDS) return out('imported', 'Already imported by DS Enhancer');
-        const mins = s => Math.round(s / 60);
-        return {
-          ...out('continued', `Listened ${mins(extra)} more min since the last import (${mins(credited)} min already counted)`, null, true),
-          seconds: extra,
-          date: ep.endDate || ep.date,
-        };
+        if (!(imported instanceof Map)) return out('imported', 'Already imported by DS Enhancer');
+        const mine = imported.get(key).filter(c => this.creditCovers(c, ep));
+        if (mine.some(c => c.seconds == null)) return out('imported', 'Already imported by DS Enhancer');
+        const credited = mine.reduce((s, c) => s + c.seconds, 0);
+        if (mine.length) {
+          const extra = ep.seconds - credited;
+          if (extra < this.CONTINUE_MIN_SECONDS) return out('imported', 'Already imported by DS Enhancer');
+          const mins = s => Math.round(s / 60);
+          return {
+            ...out('continued', `Listened ${mins(extra)} more min since the last import (${mins(credited)} min already counted)`, null, true),
+            seconds: extra,
+          };
+        }
+        // Imported before, but this is listening on another day: a fresh row. Skip the
+        // hand-entry heuristics below — they'd match our own entry from the earlier day.
+        otherDay = true;
       }
 
-      // Imported entries list one title per line, so an exact title line under a
-      // matching show is conclusive even for short titles. A long title anywhere
-      // in a description is conclusive on its own.
+      // Imported entries are dated by their row and list one title per line, so an
+      // exact title line under a matching show on the same day is conclusive even for
+      // short titles; a long title on the same day is conclusive on its own.
       const normTitle = this.normalize(ep.title);
       if (normTitle) {
-        const hit = entries.find(e =>
+        const hit = entries.find(e => e.date === ep.date && (
           (normTitle.length >= 15 && e._norm.includes(` ${normTitle} `)) ||
-          (e._lines.has(normTitle) && (!ep.show || this.showMatches(ep.show, e.description || ''))));
+          (e._lines.has(normTitle) && (!ep.show || this.showMatches(ep.show, e.description || '')))));
         if (hit) return out('imported', `Already on DS (${hit.date})`, hit);
       }
 
-      if (seen.has(key)) return out('repeat', 'Same episode appears earlier in this file');
-      seen.add(key);
+      const rowId = `${key}|${ep.startAt ?? ep.date}`;
+      if (seen.has(rowId)) return out('repeat', 'Same listening row appears earlier in this file');
+      seen.add(rowId);
+      if (otherDay) return out('new', 'Earlier listening of this episode was imported; this is another day', null, true);
 
       const near = entries.filter(e => e.date && Math.abs(this.dayDiff(e.date, ep.date)) <= 1);
       const epNum = this.episodeNumber(ep.title);
@@ -489,7 +512,8 @@ const TimeOutsideImport = {
   /**
    * Group selected episodes into one DS entry per day + show, formatted like
    * hand-typed entries ("Show:\n\nEpisode\nEpisode"). Time is summed first and
-   * rounded to whole minutes once; groups under 30 seconds are dropped.
+   * rounded to whole minutes once; episodes under 30 seconds and groups that round
+   * to zero are dropped.
    * `percent` (1–100) credits only that share of the listened time, applied to
    * each entry before rounding.
    */
@@ -498,16 +522,18 @@ const TimeOutsideImport = {
     const groups = new Map();
     for (const ep of episodes) {
       if (!ep.selected || ep.error) continue;
+      // A few seconds is a skip or an accidental tap — don't name it in the entry.
+      if (ep.seconds < 30) continue;
       const k = `${ep.date}|${ep.show}`;
-      if (!groups.has(k)) groups.set(k, { date: ep.date, show: ep.show, seconds: 0, titles: [], keys: [], episodes: {} });
+      if (!groups.has(k)) groups.set(k, { date: ep.date, show: ep.show, seconds: 0, titles: [], keys: [], rows: [] });
       const g = groups.get(k);
       g.seconds += ep.seconds;
       if (ep.title) g.titles.push(ep.status === 'continued' ? `${ep.title} (continued)` : ep.title);
       const key = ep.key || this.episodeKey(ep);
       g.keys.push(key);
-      // Raw listened seconds per episode (before the percentage) — the next import
-      // subtracts these to find time listened since.
-      g.episodes[key] = (g.episodes[key] || 0) + ep.seconds;
+      // Raw seconds credited per source row (before the percentage) — a later export
+      // of the same row subtracts these to find time listened since.
+      g.rows.push({ key, startAt: ep.startAt ?? null, seconds: ep.seconds });
     }
     const entries = [];
     for (const g of groups.values()) {
@@ -516,35 +542,55 @@ const TimeOutsideImport = {
       const description = g.show
         ? `${g.show}:\n\n${g.titles.join('\n')}`.trim()
         : g.titles.join('\n');
-      entries.push({ date: g.date, timeSeconds, description, type, keys: g.keys, episodes: g.episodes });
+      entries.push({ date: g.date, timeSeconds, description, type, keys: g.keys, rows: g.rows });
     }
     return entries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   },
 
   /**
-   * From the import log: episodeKey → raw listened seconds already credited, counting
-   * only entries still on DS (so undone or deleted imports can be re-imported in full).
-   * Entries logged before 0.3.3 have no per-episode seconds: a single-episode entry's
-   * time is scaled back up by its import's percentage; a shared one is unknown (null),
-   * which keeps that episode as plain "Already imported".
+   * From the import log: episodeKey → [{ startAt, date, seconds }], one per credited
+   * row, counting only entries still on DS (so undone or deleted imports can be
+   * re-imported in full). Entries logged before 0.3.4 have no rows: a single-episode
+   * entry's time is scaled back up by its import's percentage; a shared one is
+   * unknown (seconds null), which keeps that row as plain "Already imported".
    */
-  creditedSeconds(log, existing, language) {
+  credits(log, existing, language) {
     const ids = new Set(existing.map(e => e.id));
-    const credited = new Map();
+    const credits = new Map();
+    const add = (key, c) => {
+      if (!credits.has(key)) credits.set(key, []);
+      credits.get(key).push(c);
+    };
     for (const imp of log) {
       if (imp.language !== language) continue;
       for (const e of imp.entries) {
         if (!ids.has(e.id)) continue;
-        for (const k of e.keys) {
-          let s = null;
-          if (e.episodes && typeof e.episodes[k] === 'number') s = e.episodes[k];
-          else if (e.keys.length === 1) s = e.timeSeconds * 100 / this.clampPercent(imp.percent);
-          const prev = credited.has(k) ? credited.get(k) : 0;
-          credited.set(k, s == null || prev == null ? null : prev + s);
+        if (Array.isArray(e.rows)) {
+          for (const r of e.rows) add(r.key, { startAt: r.startAt ?? null, date: e.date, seconds: r.seconds });
+          continue;
         }
+        if (e.episodes) { // 0.3.3: per-episode seconds, no timestamps
+          for (const k of e.keys) add(k, { startAt: null, date: e.date, seconds: typeof e.episodes[k] === 'number' ? e.episodes[k] : null });
+          continue;
+        }
+        const legacy = e.keys.length === 1 ? e.timeSeconds * 100 / this.clampPercent(imp.percent) : null;
+        for (const k of e.keys) add(k, { startAt: null, date: e.date, seconds: legacy });
       }
     }
-    return credited;
+    return credits;
+  },
+
+  /**
+   * Whether an earlier credit was for this row. With timestamps: the credited row's
+   * start lies within this row's span (same row re-exported, or a longer export that
+   * swallowed it). Without: same DS day.
+   */
+  creditCovers(credit, ep) {
+    if (credit.startAt != null && ep.startAt != null) {
+      const end = ep.endAt != null && ep.endAt >= ep.startAt ? ep.endAt : ep.startAt;
+      return credit.startAt >= ep.startAt && credit.startAt <= end;
+    }
+    return credit.date === ep.date;
   },
 
   /** Whole percent between 1 and 100; anything unreadable means 100. */

@@ -27,7 +27,7 @@ const TimeOutsideUI = {
     return new Promise(resolve => chrome.storage.local.set({ [key]: value }, resolve));
   },
 
-  /** Import log: [{ at, language, percent, entries: [{ id, date, timeSeconds, keys, episodes }] }], newest last. */
+  /** Import log: [{ at, language, percent, entries: [{ id, date, timeSeconds, keys, rows }] }], newest last. */
   loadLog() { return this.storageGet(this.LOG_KEY, []); },
   saveLog(log) { return this.storageSet(this.LOG_KEY, log); },
 
@@ -79,7 +79,7 @@ const TimeOutsideUI = {
       state.mapping = TimeOutsideImport.detectColumns(state.table.headers, state.table.rows);
       // Duplicate checks need the current DS entries — refuse to continue without them.
       state.existing = await DSApi.getExternalTimes(state.language);
-      state.imported = TimeOutsideImport.creditedSeconds(await this.loadLog(), state.existing, state.language);
+      state.imported = TimeOutsideImport.credits(await this.loadLog(), state.existing, state.language);
       state.showPrefs = await this.storageGet(this.SHOWS_KEY, {});
       state.percent = TimeOutsideImport.clampPercent(await this.storageGet(this.PERCENT_KEY, 100));
       state.fileName = file.name;
@@ -183,7 +183,7 @@ const TimeOutsideUI = {
           ${state.percent < 100 ? `<span class="ds-toi-muted">(${hours(fullSec)} h listened → ${hours(totalSec)} h credited)</span>` : ''}
         </label>
         ${dupCount ? `<div class="ds-toi-dupnote">${dupCount} episode${dupCount === 1 ? '' : 's'} already on DS or repeated — unticked. Tick any you still want to add.</div>` : ''}
-        ${counts.continued ? `<div class="ds-toi-dupnote">${counts.continued} imported before but listened to further since — only the extra time is added.</div>` : ''}
+        ${counts.continued ? `<div class="ds-toi-dupnote">${counts.continued} imported before but grown since (more listening that day) — only the extra time is added.</div>` : ''}
         ${counts.weak ? `<div class="ds-toi-dupnote">${counts.weak} marked “Check”: same show logged within a day, but nothing else matched. Still ticked.</div>` : ''}
       </div>
 
@@ -267,7 +267,7 @@ const TimeOutsideUI = {
           const landed = (await DSApi.getExternalTimes(state.language)).some(x => x.id === opts.id);
           id = landed ? opts.id : await DSApi.addExternalTime(entry, state.language, opts);
         }
-        record.entries.push({ id, date: entry.date, timeSeconds: entry.timeSeconds, keys: entry.keys, episodes: entry.episodes });
+        record.entries.push({ id, date: entry.date, timeSeconds: entry.timeSeconds, keys: entry.keys, rows: entry.rows });
         // Save after every entry so a closed tab can't lose track of what was posted.
         await this.saveLog(log);
       } catch (e) {

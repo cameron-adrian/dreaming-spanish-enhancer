@@ -130,13 +130,19 @@ test('episodes logged by hand in shorthand are caught', () => {
   assert.equal(find(out, 'Viajar sola por el mundo').status, 'manual');
 });
 
-test('an episode repeated later in the file is unticked', () => {
+// Podcast Addict's rows hold the time listened in the report period, so one episode
+// on two days is two separate listens (this test used to expect "repeat" — that
+// assumed one cumulative row per episode, which the measured export disproved).
+test('the same episode on two days is two listens; an identical row is a repeat', () => {
   const out = T.classifyDuplicates(load().episodes, [], new Set());
   const ep25 = out.filter(e => e.title === 'Episodio 25: Las vacaciones de mi familia');
   assert.equal(ep25.length, 2);
-  assert.equal(ep25[0].status, 'new');
-  assert.equal(ep25[1].status, 'repeat');
-  assert.equal(ep25[1].selected, false);
+  assert.deepEqual(plain(ep25.map(e => [e.date, e.status, e.selected])), [['2026-06-03', 'new', true], ['2026-06-07', 'new', true]]);
+
+  const doubled = csv.trim() + '\n' + csv.trim().split('\n')[7];
+  const twice = T.classifyDuplicates(load(doubled).episodes, [], new Set())
+    .filter(e => e.title === 'Episodio 26: ¿Por qué aprender idiomas?');
+  assert.deepEqual(plain(twice.map(e => [e.status, e.selected])), [['new', true], ['repeat', false]]);
 });
 
 test('an unrelated entry on a nearby day does not block a new episode', () => {
@@ -220,22 +226,27 @@ test('the percentage is clamped to 1–100 and unreadable values mean 100', () =
   for (const v of ['', ' ', 'abc', null, undefined, NaN]) assert.equal(T.clampPercent(v), 100, String(v));
 });
 
-// ---- Episodes finished after an import ----
-// Podcast Addict has one row per episode: a later report repeats the row with a
-// larger listened time and a later end time (made-up rows, real column layout).
+// ---- Episodes listened to across several imports ----
+// Made-up rows in the real layout. Verified on two real exports (2026-09-30): a
+// report has one row per episode for its period, and a "measured" row holds only
+// the time listened in that period — finishing an episode on a later day shows up
+// as a new row with just that day's time, not a bigger running total.
 
 const HEADER = 'listening_date,podcast_name,episode_name,listening_start_at,listening_end_at,elapsed_time,listened_duration,fully_listened,episode_duration,history_quality';
 const report = (...rows) => [HEADER, ...rows].join('\n');
+// Report 1 (up to 9/29)
 const PARTIAL = '2026-09-27,"Charlas Lentas","Un viaje largo por Patagonia",2026-09-27 01:12:51,2026-09-27 01:12:51,00:00:00,00:06:08,false,00:23:13,"approximate"';
-const OTHER = '2026-09-28,"Charlas Lentas","Mercados de Oaxaca",2026-09-28 15:00:00,2026-09-28 15:00:00,00:00:00,00:20:00,true,00:20:00,"approximate"';
-// Same episode, finished on 9/30: only the end time and totals moved...
-const FINISHED_END_MOVED = '2026-09-27,"Charlas Lentas","Un viaje largo por Patagonia",2026-09-27 01:12:51,2026-09-30 18:40:00,00:00:00,00:23:13,true,00:23:13,"approximate"';
-// ...or the whole row moved to the new day.
-const FINISHED_ROW_MOVED = '2026-09-30,"Charlas Lentas","Un viaje largo por Patagonia",2026-09-30 18:20:00,2026-09-30 18:40:00,00:00:00,00:23:13,true,00:23:13,"approximate"';
+const LONG = '2026-09-29,"Historias Largas","La ruta de la seda",2026-09-29 13:07:31,2026-09-29 23:50:58,10:43:27,02:38:49,false,03:05:19,"approximate"';
+// Report 2 (9/30 only): the same two episodes finished, plus a 1-second blip.
+const PARTIAL_TODAY = '2026-09-30,"Charlas Lentas","Un viaje largo por Patagonia",2026-09-30 13:53:47,2026-09-30 14:21:49,00:28:01,00:14:50,true,00:23:13,"measured"';
+const LONG_TODAY = '2026-09-30,"Historias Largas","La ruta de la seda",2026-09-30 00:11:58,2026-09-30 11:40:34,11:28:35,00:30:15,true,03:05:19,"measured"';
+const BLIP = '2026-09-30,"Charlas Lentas","Mercados de Oaxaca",2026-09-30 19:40:43,2026-09-30 19:40:45,00:00:01,00:00:01,false,00:22:15,"measured"';
+// Report 2 exported again later that day, after more listening.
+const PARTIAL_TODAY_LATER = PARTIAL_TODAY.replace('2026-09-30 14:21:49,00:28:01,00:14:50', '2026-09-30 20:05:00,06:11:13,00:25:00');
 
 /** Import a report the way the card does; returns the DS entries and log it leaves behind. */
 function importReport(text, { existing = [], log = [], percent = 100 } = {}) {
-  const imported = T.creditedSeconds(log, existing, 'es');
+  const imported = T.credits(log, existing, 'es');
   const classified = T.classifyDuplicates(load(text).episodes, existing, imported);
   const entries = T.buildEntries(classified, { percent });
   const posted = entries.map((e, i) => ({ ...e, id: `${log.length}-${i}` }));
@@ -243,80 +254,112 @@ function importReport(text, { existing = [], log = [], percent = 100 } = {}) {
     classified,
     entries,
     existing: [...existing, ...posted.map(({ id, date, timeSeconds, description, type }) => ({ id, date, timeSeconds, description, type }))],
-    log: [...log, { language: 'es', percent, entries: posted.map(({ id, date, timeSeconds, keys, episodes }) => ({ id, date, timeSeconds, keys, episodes })) }],
+    log: [...log, { language: 'es', percent, entries: posted.map(({ id, date, timeSeconds, keys, rows }) => ({ id, date, timeSeconds, keys, rows })) }],
   };
 }
+const statusOf = (r, title) => find(r.classified, title).status;
 
-for (const [label, finished] of [['end time moved', FINISHED_END_MOVED], ['whole row moved', FINISHED_ROW_MOVED]]) {
-  test(`a partly heard episode finished later adds only the extra time, on the day it was finished (${label})`, () => {
-    const first = importReport(report(PARTIAL));
-    // 01:12 is before DS's 4am rollover, so the first 6 minutes count for 9/26.
-    assert.deepEqual(plain(first.entries.map(e => [e.date, e.timeSeconds])), [['2026-09-26', 6 * 60]]);
+test('finishing an episode on a later day adds that day\'s listening in full, on that day', () => {
+  const first = importReport(report(PARTIAL, LONG));
+  // 01:12 is before DS's 4am rollover, so the first 6 minutes count for 9/26.
+  assert.deepEqual(plain(first.entries.map(e => [e.date, e.timeSeconds])), [['2026-09-26', 6 * 60], ['2026-09-29', 159 * 60]]);
 
-    const second = importReport(report(finished, OTHER), first);
-    const ep = find(second.classified, 'Un viaje largo por Patagonia');
-    assert.equal(ep.status, 'continued');
-    assert.equal(ep.selected, true);
-    assert.equal(ep.seconds, 1393 - 368);
-    assert.equal(ep.date, '2026-09-30');
+  const second = importReport(report(PARTIAL_TODAY, LONG_TODAY, BLIP), first);
+  const partial = find(second.classified, 'Un viaje largo por Patagonia');
+  assert.equal(partial.status, 'new');
+  assert.equal(partial.selected, true);
+  assert.match(partial.reason, /another day/);
+  // Starts 00:11 but ran until 11:40 — it's 9/30's listening, and 9/29's credit doesn't touch it.
+  const long = find(second.classified, 'La ruta de la seda');
+  assert.equal(long.status, 'new');
+  assert.equal(long.date, '2026-09-30');
+  assert.deepEqual(plain(second.entries.map(e => [e.date, e.timeSeconds, e.description])), [
+    ['2026-09-30', 15 * 60, 'Charlas Lentas:\n\nUn viaje largo por Patagonia'], // the 1-second blip is left out
+    ['2026-09-30', 30 * 60, 'Historias Largas:\n\nLa ruta de la seda'],
+  ]);
 
-    const cont = second.entries.find(e => e.date === '2026-09-30');
-    assert.equal(cont.timeSeconds, 17 * 60); // 17:05 more
-    assert.equal(cont.description, 'Charlas Lentas:\n\nUn viaje largo por Patagonia (continued)');
-    assert.equal(find(second.classified, 'Mercados de Oaxaca').status, 'new');
-
-    // A third run of the same report finds nothing new.
-    const third = importReport(report(finished, OTHER), second);
-    assert.equal(find(third.classified, 'Un viaje largo por Patagonia').status, 'imported');
-    assert.equal(find(third.classified, 'Mercados de Oaxaca').status, 'imported');
-    assert.equal(third.entries.length, 0);
-  });
-}
-
-test('the percentage applies to the extra time only, and counts the raw time as heard', () => {
-  const first = importReport(report(PARTIAL), { percent: 50 });
-  assert.equal(first.entries[0].timeSeconds, 3 * 60);
-  assert.equal(first.log[0].entries[0].episodes[first.entries[0].keys[0]], 368);
-
-  const second = importReport(report(FINISHED_END_MOVED), { ...first, percent: 90 });
-  assert.equal(find(second.classified, 'Un viaje largo por Patagonia').seconds, 1393 - 368);
-  // 17:05 × 0.9 = 15:22 → 15 minutes
-  assert.equal(second.entries[0].timeSeconds, 15 * 60);
+  // Running either report again finds nothing new.
+  assert.equal(importReport(report(PARTIAL_TODAY, LONG_TODAY, BLIP), second).entries.length, 0);
+  const again1 = importReport(report(PARTIAL, LONG), second);
+  assert.equal(again1.entries.length, 0);
+  assert.equal(statusOf(again1, 'La ruta de la seda'), 'imported');
 });
 
-test('undoing the first import means the finished episode is imported in full', () => {
-  const first = importReport(report(PARTIAL));
-  const undone = { log: first.log, existing: [] }; // entries deleted from DS
-  const again = importReport(report(FINISHED_ROW_MOVED), undone);
-  const ep = find(again.classified, 'Un viaje largo por Patagonia');
-  assert.equal(ep.status, 'new');
-  assert.equal(again.entries[0].timeSeconds, 23 * 60);
-});
-
-test('less than a minute of extra listening is not a continuation', () => {
-  const first = importReport(report(PARTIAL));
-  const nudged = PARTIAL.replace('00:06:08,false', '00:06:50,false').replace('2026-09-27 01:12:51,00:00', '2026-09-30 10:00:00,00:00');
-  const second = importReport(report(nudged), first);
-  assert.equal(find(second.classified, 'Un viaje largo por Patagonia').status, 'imported');
-});
-
-test('import logs from before 0.3.3 still allow continuing a single-episode entry', () => {
-  const key = T.episodeKey({ show: 'Charlas Lentas', title: 'Un viaje largo por Patagonia' });
-  const otherKey = T.episodeKey({ show: 'Charlas Lentas', title: 'Mercados de Oaxaca' });
-  const existing = [
-    { id: 'old1', date: '2026-09-26', timeSeconds: 360, type: 'listening', description: 'Charlas Lentas:\n\nUn viaje largo por Patagonia' },
-  ];
-  // Old record: no percent, no per-episode seconds.
-  const log = [{ language: 'es', entries: [{ id: 'old1', date: '2026-09-26', timeSeconds: 360, keys: [key] }] }];
-  assert.equal(T.creditedSeconds(log, existing, 'es').get(key), 360);
-  const second = importReport(report(FINISHED_END_MOVED), { existing, log });
+test('a row re-exported later the same day adds only its extra time', () => {
+  const first = importReport(report(PARTIAL_TODAY));
+  const second = importReport(report(PARTIAL_TODAY_LATER), first);
   const ep = find(second.classified, 'Un viaje largo por Patagonia');
   assert.equal(ep.status, 'continued');
-  assert.equal(ep.seconds, 1393 - 360);
+  assert.equal(ep.selected, true);
+  assert.equal(ep.seconds, 1500 - 890);
+  assert.deepEqual(plain(second.entries.map(e => [e.date, e.timeSeconds, e.description])), [
+    ['2026-09-30', 10 * 60, 'Charlas Lentas:\n\nUn viaje largo por Patagonia (continued)'],
+  ]);
+  assert.equal(statusOf(importReport(report(PARTIAL_TODAY_LATER), second), 'Un viaje largo por Patagonia'), 'imported');
+});
 
-  // Two episodes sharing one old entry can't be split — stays "Already imported".
+test('less than a minute of extra listening on the same row is not a continuation', () => {
+  const first = importReport(report(PARTIAL_TODAY));
+  const nudged = PARTIAL_TODAY.replace('00:14:50,true', '00:15:30,true');
+  assert.equal(statusOf(importReport(report(nudged), first), 'Un viaje largo por Patagonia'), 'imported');
+});
+
+// Not seen in a real export yet: a multi-day report that merges an episode's days into one row.
+test('a row whose span covers an imported row only adds the rest', () => {
+  const first = importReport(report(LONG));
+  const merged = LONG.replace('2026-09-29 23:50:58,10:43:27,02:38:49,false', '2026-09-30 11:40:34,22:33:03,03:09:04,true');
+  const second = importReport(report(merged), first);
+  const ep = find(second.classified, 'La ruta de la seda');
+  assert.equal(ep.status, 'continued');
+  assert.equal(ep.seconds, (3 * 3600 + 9 * 60 + 4) - (2 * 3600 + 38 * 60 + 49));
+});
+
+test('the percentage applies to the new time only; the log keeps raw seconds', () => {
+  const first = importReport(report(PARTIAL_TODAY), { percent: 50 });
+  assert.equal(first.entries[0].timeSeconds, 7 * 60); // 7:25
+  assert.equal(first.log[0].entries[0].rows[0].seconds, 890);
+
+  const second = importReport(report(PARTIAL_TODAY_LATER), { ...first, percent: 90 });
+  // 10:10 × 0.9 = 9:09 → 9 minutes
+  assert.equal(second.entries[0].timeSeconds, 9 * 60);
+});
+
+test('undoing an import lets the same rows be imported in full again', () => {
+  const first = importReport(report(PARTIAL_TODAY));
+  const again = importReport(report(PARTIAL_TODAY_LATER), { log: first.log, existing: [] }); // entries deleted from DS
+  assert.equal(statusOf(again, 'Un viaje largo por Patagonia'), 'new');
+  assert.equal(again.entries[0].timeSeconds, 25 * 60);
+});
+
+test('import logs from 0.3.1–0.3.3 match by day', () => {
+  const key = T.episodeKey({ show: 'Charlas Lentas', title: 'Un viaje largo por Patagonia' });
+  const otherKey = T.episodeKey({ show: 'Charlas Lentas', title: 'Mercados de Oaxaca' });
+  const existing = [{ id: 'old1', date: '2026-09-26', timeSeconds: 360, type: 'listening', description: 'Charlas Lentas:\n\nUn viaje largo por Patagonia' }];
+  const log031 = [{ language: 'es', entries: [{ id: 'old1', date: '2026-09-26', timeSeconds: 360, keys: [key] }] }];
+  assert.deepEqual(plain(T.credits(log031, existing, 'es').get(key)), [{ startAt: null, date: '2026-09-26', seconds: 360 }]);
+
+  // Another day: new listening in full.
+  const today = importReport(report(PARTIAL_TODAY), { existing, log: log031 });
+  assert.equal(statusOf(today, 'Un viaje largo por Patagonia'), 'new');
+  assert.equal(today.entries[0].timeSeconds, 15 * 60);
+  // Same day: already imported.
+  assert.equal(statusOf(importReport(report(PARTIAL), { existing, log: log031 }), 'Un viaje largo por Patagonia'), 'imported');
+
+  // Two episodes sharing one old entry can't be split: same-day rows stay "Already imported".
   const shared = [{ language: 'es', entries: [{ id: 'old1', date: '2026-09-26', timeSeconds: 1560, keys: [key, otherKey] }] }];
-  assert.equal(T.creditedSeconds(shared, existing, 'es').get(key), null);
-  const third = importReport(report(FINISHED_END_MOVED), { existing, log: shared });
-  assert.equal(find(third.classified, 'Un viaje largo por Patagonia').status, 'imported');
+  assert.equal(T.credits(shared, existing, 'es').get(key)[0].seconds, null);
+  assert.equal(statusOf(importReport(report(PARTIAL), { existing, log: shared }), 'Un viaje largo por Patagonia'), 'imported');
+
+  // 0.3.3 stored per-episode seconds without timestamps.
+  const log033 = [{ language: 'es', entries: [{ id: 'old1', date: '2026-09-26', timeSeconds: 360, keys: [key], episodes: { [key]: 368 } }] }];
+  assert.equal(T.credits(log033, existing, 'es').get(key)[0].seconds, 368);
+});
+
+test('without the import log, a later day\'s listening is held back for review, not double-counted', () => {
+  const first = importReport(report(PARTIAL, LONG));
+  const noLog = importReport(report(PARTIAL_TODAY, LONG_TODAY), { existing: first.existing });
+  // The 9/29 entry is within a day of 9/30 and names the episode — flagged, unticked.
+  assert.equal(statusOf(noLog, 'La ruta de la seda'), 'manual');
+  // The 9/26 entry is days away — new.
+  assert.equal(statusOf(noLog, 'Un viaje largo por Patagonia'), 'new');
 });
